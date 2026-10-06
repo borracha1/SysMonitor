@@ -4,9 +4,10 @@ sys_monitor.py — Lightweight system monitor widget (TrafficMonitor replacement
 Shows, embedded in the Windows taskbar just left of the tray (default mode):
   - Network upload/download speed (psutil, no driver needed)
   - CPU usage % (psutil)
-  - CPU temperature (HWiNFO64 shared memory — needs HWiNFO64 running)
-  - GPU usage % and temperature (HWiNFO64 shared memory, via NVIDIA's
-    signed driver under the hood — works with Memory Integrity/HVCI ON)
+  - CPU temperature (LibreHardwareMonitor's local web server — needs LHM
+    running; it reads the sensor via the signed PawnIO driver, HVCI-safe)
+  - GPU usage % and temperature (NVIDIA's NVML — signed driver, works with
+    Memory Integrity/HVCI ON)
   - Memory usage %
 
 Display modes (config.ini -> [window] display_mode):
@@ -18,7 +19,7 @@ Display modes (config.ini -> [window] display_mode):
 
 Design choices:
   - Pure stdlib GUI (tkinter) + psutil: no heavy GUI framework to install.
-  - HWiNFO reading is best-effort: if HWiNFO64 isn't running, CPU/GPU temps
+  - Sensor reading is best-effort (sensors.py): if LHM/NVML fail, CPU/GPU temps
     show "--" instead of crashing (mirrors the failure mode we fixed in
     TrafficMonitor, but gracefully instead of an unhandled exception).
   - Single instance enforced via a named mutex so you can't accidentally
@@ -38,7 +39,7 @@ import psutil
 import tkinter as tk
 import tkinter.font as tkfont
 
-from hwinfo_reader import HWiNFOReader, READING_TYPE_TEMP, READING_TYPE_USAGE
+from sensors import SensorReader
 
 APP_NAME = "SysMonitor"
 CONFIG_PATH = Path(__file__).with_name("config.ini")
@@ -439,8 +440,8 @@ class Metrics:
         self.cpu_temp = None
         self.gpu_temp = None
         self.gpu_usage = None
-        self.hwinfo_ok = False
-        self.hwinfo_error = None
+        self.cpu_temp_error = None
+        self.gpu_error = None
 
     def snapshot(self):
         with self.lock:
@@ -452,8 +453,8 @@ class Metrics:
                 cpu_temp=self.cpu_temp,
                 gpu_temp=self.gpu_temp,
                 gpu_usage=self.gpu_usage,
-                hwinfo_ok=self.hwinfo_ok,
-                hwinfo_error=self.hwinfo_error,
+                cpu_temp_error=self.cpu_temp_error,
+                gpu_error=self.gpu_error,
             )
 
 
@@ -463,7 +464,7 @@ class Collector(threading.Thread):
         self.metrics = metrics
         self.interval_s = interval_s
         self._stop = threading.Event()
-        self._hwinfo = HWiNFOReader()
+        self._sensors = SensorReader()
         self._last_net = psutil.net_io_counters()
         self._last_net_time = time.time()
 
@@ -489,43 +490,15 @@ class Collector(threading.Thread):
         cpu_percent = psutil.cpu_percent(interval=None)
         mem_percent = psutil.virtual_memory().percent
 
-        cpu_temp = gpu_temp = gpu_usage = None
-        hwinfo_ok = False
-        hwinfo_error = None
-        try:
-            readings = self._hwinfo.read()
-            if self._hwinfo.last_error:
-                hwinfo_error = self._hwinfo.last_error
-            elif readings:
-                hwinfo_ok = True
-                r_cpu = (
-                    self._hwinfo.find(readings, "tctl", reading_type=READING_TYPE_TEMP)
-                    or self._hwinfo.find(readings, "cpu package", reading_type=READING_TYPE_TEMP)
-                    or self._hwinfo.find(readings, "cpu (", reading_type=READING_TYPE_TEMP)
-                )
-                r_gpu_t = self._hwinfo.find(readings, "gpu", reading_type=READING_TYPE_TEMP)
-                r_gpu_u = (
-                    self._hwinfo.find(readings, "núcleo da gpu", reading_type=READING_TYPE_USAGE)
-                    or self._hwinfo.find(readings, "gpu", "core", reading_type=READING_TYPE_USAGE)
-                    or self._hwinfo.find(readings, "gpu", "utilization", reading_type=READING_TYPE_USAGE)
-                    or self._hwinfo.find(readings, "gpu", "utilização", reading_type=READING_TYPE_USAGE)
-                )
-                cpu_temp = r_cpu.value if r_cpu else None
-                gpu_temp = r_gpu_t.value if r_gpu_t else None
-                gpu_usage = r_gpu_u.value if r_gpu_u else None
-        except Exception as e:  # never let a sensor hiccup kill the collector thread
-            hwinfo_error = f"unexpected error: {e}"
+        sensors = self._sensors.read()
 
         with self.metrics.lock:
             self.metrics.up_speed = up
             self.metrics.down_speed = down
             self.metrics.cpu_percent = cpu_percent
             self.metrics.mem_percent = mem_percent
-            self.metrics.cpu_temp = cpu_temp
-            self.metrics.gpu_temp = gpu_temp
-            self.metrics.gpu_usage = gpu_usage
-            self.metrics.hwinfo_ok = hwinfo_ok
-            self.metrics.hwinfo_error = hwinfo_error
+            for key, value in sensors.items():
+                setattr(self.metrics, key, value)
 
 
 # ---------------------------------------------------------------------------
@@ -830,7 +803,7 @@ class MonitorWindow:
             self.lbl_gpu.config(text=f"GPU: {gpu_u}%  {gpu_t}°C")
             self.lbl_mem.config(text=f"MEM: {m['mem_percent']:.0f}%")
 
-        self.lbl_status.config(text="⚠" if (not m["hwinfo_ok"] and m["hwinfo_error"]) else "")
+        self.lbl_status.config(text="⚠" if (m["cpu_temp_error"] or m["gpu_error"]) else "")
 
     def _maintain_position(self):
         if self.mode == "taskbar":

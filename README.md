@@ -8,27 +8,28 @@ Windows LIGADO — sem precisar de driver de kernel não assinado.
 
 - Rede (upload/download), CPU % e memória % vêm do `psutil`
   (contadores nativos do Windows, sem driver nenhum).
-- Temperatura da CPU e uso/temperatura da GPU vêm da memória
-  compartilhada do HWiNFO64 (`Global\HWiNFO_SENS_SM2`), lida via ctypes
-  em `hwinfo_reader.py`. O HWiNFO64 usa um driver de kernel ASSINADO
-  digitalmente, então funciona mesmo com HVCI ativo.
-- Se o HWiNFO64 não estiver rodando, o widget mostra "--" nos campos
-  de temperatura/GPU e um aviso discreto, em vez de travar (era esse
-  o bug original do TrafficMonitor: ele quebrava com exceção não
-  tratada quando o índice do sensor mudava).
+- Uso/temperatura da GPU vêm do NVML da NVIDIA (`nvml.dll`, instalado
+  junto com o driver), lido via ctypes em `sensors.py`.
+- Temperatura da CPU vem do servidor web local do LibreHardwareMonitor
+  (`http://127.0.0.1:8085/data.json`). O LHM lê o sensor do Ryzen pelo
+  driver PawnIO, que é ASSINADO e funciona com HVCI ativo.
+- Se alguma leitura falhar, o widget mostra "--" no campo e um ⚠
+  discreto, em vez de travar (era esse o bug original do
+  TrafficMonitor: ele quebrava com exceção não tratada quando o índice
+  do sensor mudava).
+- Antes era usado o HWiNFO64, mas na versão Free a Shared Memory
+  desliga sozinha depois de 12 horas (o ⚠ aparecia por isso).
 
 ## Pré-requisitos
 
-1. HWiNFO64 (Free) instalado — já está em
-   `C:\Program Files\HWiNFO64\HWiNFO64.EXE`.
-2. No HWiNFO64: menu de configurações (ícone de engrenagem) →
-   marcar "Shared Memory Support" (ou garantir que
-   `C:\Program Files\HWiNFO64\HWiNFO64.INI` tem `SensorsSM=1` na
-   seção `[Settings]`).
-3. Deixar o HWiNFO64 aberto (pode ficar minimizado/na bandeja).
-   A versão Free não aceita o parâmetro `-s` (isso é exclusivo do
-   HWiNFO Pro pago) — então ele precisa estar com a janela normal
-   aberta, mesmo que minimizada.
+1. Driver NVIDIA instalado (traz o `nvml.dll`).
+2. LibreHardwareMonitor + PawnIO:
+   `winget install LibreHardwareMonitor.LibreHardwareMonitor`
+   (instala o PawnIO como dependência).
+3. No LHM: Options → Remote Web Server → Run (porta 8085),
+   Start Minimized, Minimize To Tray, Minimize On Close e
+   Run On Windows Startup. Ele precisa rodar como admin (a tarefa
+   de inicialização que ele cria já faz isso).
 
 ## Rodando
 
@@ -67,21 +68,19 @@ com o login do Windows. Para desativar, apague o atalho
 ## Arquivos
 
 - `sys_monitor.py` — janela/GUI (tkinter) e loop de coleta.
-- `hwinfo_reader.py` — leitor standalone da memória compartilhada do
-  HWiNFO64 (pode ser reusado em outros scripts).
+- `sensors.py` — leitura de GPU (NVML) e temperatura da CPU (LHM);
+  `python sensors.py` mostra os valores atuais para teste.
 - `create_shortcut.py` — cria atalhos de Menu Iniciar e de
   inicialização automática.
 - `config.ini` — configurações do usuário (gerado automaticamente).
 
 ## Limitações conhecidas
 
-- Depende do HWiNFO64 estar rodando para temperatura de CPU/GPU
-  (não tem workaround sem ele, dado o bloqueio do HVCI a drivers
-  não assinados).
+- Depende do LibreHardwareMonitor estar rodando para a temperatura
+  da CPU (o Windows não expõe esse sensor sem driver nesta placa).
 - Não mostra gráfico histórico (só o valor atual), diferente do
   TrafficMonitor. Pode ser adicionado depois se você quiser.
 - Testado em um sistema com CPU AMD Ryzen 7 5700 + GPU NVIDIA
-  RTX 4060. Os rótulos de sensores (`CPU (Tctl/Tdie)`, `Temperatura
-  GPU`, `Carga do núcleo da GPU`) podem variar em outros hardwares;
-  o código busca por padrões em português e inglês, mas pode
-  precisar de ajuste fino se os nomes dos sensores forem diferentes.
+  RTX 4060. A CPU usa o sensor `Core (Tctl/Tdie)` do LHM (com
+  `CPU Package` como alternativa para Intel); a GPU usa a primeira
+  placa NVIDIA.

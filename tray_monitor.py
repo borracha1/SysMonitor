@@ -345,8 +345,8 @@ def render_cpu(m):
     temp = f"{m['cpu_temp']:.0f}°" if m["cpu_temp"] is not None else "--"
     lines = [cpu, temp]
     tooltip = f"CPU: {m['cpu_percent']:.0f}%  {temp}"
-    if not m["hwinfo_ok"] and m["hwinfo_error"]:
-        tooltip += "\n⚠ HWiNFO64 não está rodando (sem leitura de temperatura)"
+    if m["cpu_temp_error"]:
+        tooltip += "\n⚠ LibreHardwareMonitor não está rodando (sem leitura de temperatura)"
     return lines, tooltip
 
 
@@ -357,12 +357,12 @@ def render_gpu_mem(m):
         lines = [gpu, gtemp]
         tooltip = f"GPU: {gpu}  {gtemp}   |   MEM: {m['mem_percent']:.0f}%"
     else:
-        # No GPU reading (HWiNFO off or no dGPU exposed) — fall back to
+        # No GPU reading (NVML failed or no NVIDIA GPU) — fall back to
         # showing memory, which is always available via psutil.
         lines = [f"{m['mem_percent']:.0f}%", "MEM"]
         tooltip = f"MEM: {m['mem_percent']:.0f}%"
-        if not m["hwinfo_ok"] and m["hwinfo_error"]:
-            tooltip += "\n⚠ HWiNFO64 não está rodando (sem leitura de GPU)"
+        if m["gpu_error"]:
+            tooltip += "\n⚠ Sem leitura da GPU (NVML)"
     return lines, tooltip
 
 
