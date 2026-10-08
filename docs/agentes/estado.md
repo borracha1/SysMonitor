@@ -1,4 +1,4 @@
-Atualizado em 2026-10-07 (commit 7400f35)
+Atualizado em 2026-10-08 (commit 4b40627)
 
 # Estado e histórico
 ## Base documentada
@@ -16,17 +16,28 @@ Atualizado em 2026-10-07 (commit 7400f35)
 |---|---|---|
 | `1764c9a` | 2026-10-04 | Base do widget compatível com HVCI, bandeja, coletor e atalhos |
 | `7400f35` | 2026-10-05 | Troca HWiNFO por NVML/LHM; remove hwinfo_reader.py e create_hwinfo_startup.py |
+| `5baf4ad` | 2026-10-07 | Documentação técnica por área para agentes |
+| `4b40627` | 2026-10-07 | telas.md com capturas; publicado no GitHub em 2026-10-08 |
 - Razão da migração: HWiNFO Free desliga Shared Memory após 12 horas.
 - [README](../../README.md) relata teste em Ryzen 7 5700 + NVIDIA RTX 4060; não revalidado nesta tarefa.
 - Histórico de decisões de interface também está nos comentários/docstrings do código, resumido em [armadilhas.md](armadilhas.md).
 - Não há specs/planos em docs/superpowers, changelog ou LEIAME nesta base consultada.
+
+## Verificações de 2026-10-08
+- Tarefa agendada `\LibreHardwareMonitor` confirmada: `RunLevel=Highest` (elevada), `UserId=mateu`, `LogonType=Interactive`. Ela inicia o LHM e supre o requisito de admin citado no README.
+- Config do LHM confirma `listenerPort=8085`, `runWebServerMenuItem`, `startMinMenuItem`, `minTrayMenuItem` e `minCloseMenuItem` ativos.
+- `python sensors.py` executado com Python 3.14: GPU `(52.0, 31.0)`, CPU `69.8`. NVML e LHM funcionais de ponta a ponta.
+- `SysMonitor.lnk` presente na pasta Startup do usuário; autostart do widget ativo.
+- O LHM usa `HttpListener` sobre o http.sys, por isso o listener da porta 8085 aparece como PID 4 (System) no `netstat`; o processo real é `LibreHardwareMonitor` (sessão 1).
+- HWiNFO64 8.54 permanece instalado em `C:\Program Files\HWiNFO64`, já sem uso pelo projeto.
+- Correção publicada: o README recomendava `pythonw.exe`, que tem falha de pintura nesta máquina; passou a recomendar `python.exe`.
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
 - Sem testes automatizados, manifesto de dependências ou build distribuível.
 - Nenhuma tarefa funcional em andamento está registrada no repositório consultado.
-- Pendências de verificação: versões do ambiente implantado, tarefa elevada de Startup do LHM e entrada efetivamente usada.
+- Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.
 - Riscos de coleta/concorrência estão em [armadilhas.md](armadilhas.md); não foram corrigidos nesta tarefa só de documentação.
 

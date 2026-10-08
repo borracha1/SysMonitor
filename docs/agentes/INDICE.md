@@ -1,10 +1,10 @@
-Atualizado em 2026-10-07 (branch main, commit 7400f35)
+Atualizado em 2026-10-08 (branch main, commit 4b40627)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
 Há widget Tkinter integrado à barra e alternativa de três ícones na bandeja.
 Stack: Python 3 (mínimo sintático 3.10), Tkinter, psutil, ctypes/Win32, NVML e LHM/PawnIO.
-Versões instaladas de bibliotecas e sensores: (a confirmar); não há manifesto com versões.
+Versões verificadas em 2026-10-08: Python 3.14, LibreHardwareMonitor 0.9.6, PawnIO 2.2.0.0; não há manifesto com versões.
 
 ## Comandos (para tarefas futuras; não executados nesta documentação)
 ```text
@@ -16,7 +16,7 @@ python3 create_shortcut.py
 Não há suíte automatizada nem comando de build no repositório.
 
 ## Estado
-Sem versão formal declarada. Branch `main`; base de código `7400f35`.
+Sem versão formal declarada. Branch `main`; base de código `4b40627`, sincronizada com `origin/main`.
 Última mudança funcional: migração HWiNFO → NVML/LHM; detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
@@ -38,6 +38,6 @@ Sem versão formal declarada. Branch `main`; base de código `7400f35`.
 - Atualizar cabeçalhos, estado e áreas tocadas ao fechar marcos.
 
 ## Histórico e referências
-- [README existente](../../README.md) (há divergências documentadas em build-e-uso).
+- [README existente](../../README.md); a divergência sobre `pythonw.exe` foi corrigida em 2026-10-08.
 - [Estado e marcos Git](estado.md); `git log` é o histórico técnico disponível.
 - Não existem specs, planos, changelog ou `docs/superpowers/` nesta base.

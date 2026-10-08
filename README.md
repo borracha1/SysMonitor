@@ -38,12 +38,15 @@ cd D:\dev\pc\SysMonitor
 python3 sys_monitor.py
 ```
 
-Para rodar sem a janela de console (recomendado no dia a dia), use
-`pythonw.exe` no lugar de `python3.exe`/`python.exe`:
+Para rodar sem ver a janela de console, use o `python.exe` normal: o
+widget esconde o próprio console logo na inicialização, via
+`hide_console_window()` em `sys_monitor.py`.
 
-```
-pythonw.exe sys_monitor.py
-```
+Não use `pythonw.exe`: nesta máquina a janela Tkinter com alpha/
+layered **não pinta** com ele (peculiaridade do Tcl/Tk no Windows
+quando o processo não tem console anexado). Foi justamente por isso
+que o projeto adotou `python.exe` e oculta o console por conta
+própria.
 
 ## Configuração
 
