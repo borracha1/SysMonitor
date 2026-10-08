@@ -22,6 +22,7 @@ Sem versão formal declarada. Branch `main`; base de código `7400f35`.
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
 |---|---|
+| como as telas estão hoje (capturas com legenda) | [telas.md](telas.md) |
 | módulos, fluxo de dados, concorrência ou armazenamento | [arquitetura.md](arquitetura.md) |
 | coleta, GPU, temperatura da CPU, falhas de sensores | [sensores-coleta.md](sensores-coleta.md) |
 | widget, barra de tarefas, bandeja, renderização | [interface.md](interface.md) e [armadilhas.md](armadilhas.md) |
