@@ -16,7 +16,7 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Não há comando de build no repositório.
 
 ## Estado
-Sem versão formal declarada. Branch `main`; commits locais à frente de `origin/main` (sem push).
+Sem versão formal declarada. Branch `main`; base de código `9ccd25a`, sincronizada com `origin/main`.
 Última mudança funcional: perda de pacotes por grupo IPv4/IPv6 com troca automática (2026-10-21); detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
