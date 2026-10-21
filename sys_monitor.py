@@ -40,6 +40,9 @@ import tkinter as tk
 import tkinter.font as tkfont
 
 from sensors import SensorReader
+from ping_monitor import (PingMonitor, ping_settings, parse_ping_groups, fmt_ping_line,
+                          ping_has_problem, ping_marker, ping_column_width, initial_ping_family)
+from ping_config import save_ping_settings
 
 APP_NAME = "SysMonitor"
 CONFIG_PATH = Path(__file__).with_name("config.ini")
@@ -153,16 +156,43 @@ DEFAULTS = {
         "update_interval_ms": "1000",
         "taskbar_width": "220",  # docked mode only (taskbar mode sizes itself from the font)
         "docked_height": "36",   # docked mode only
-    }
+    },
+    # Internet packet-loss monitor (ICMP, see ping_monitor.py)
+    "ping": {
+        "enabled": "true",
+        "targets_v4": "8.8.8.8,1.1.1.1",
+        "targets_v6": "2001:4860:4860::8888,2606:4700:4700::1111",
+        "mode": "auto",
+        "preferred": "ipv4",
+        "return_clean_cycles": "60",
+        "interval_ms": "1000",
+        "timeout_ms": "1000",
+        "window": "60",         # cycles in the sliding loss window (~1 min at 1 s)
+        "notify": "true",       # Windows toast on loss / recovery
+        "alert_after": "1",     # consecutive lost cycles before alerting
+        "cooldown_s": "60",     # min seconds between loss toasts
+    },
 }
 
 
 def load_config() -> configparser.ConfigParser:
     cfg = configparser.ConfigParser()
-    cfg.read_dict(DEFAULTS)
     if CONFIG_PATH.exists():
         cfg.read(CONFIG_PATH, encoding="utf-8")
+        # Resolve legacy keys before applying new defaults, or migration is masked.
+        if not cfg.has_section("ping"):
+            cfg.add_section("ping")
+        settings = ping_settings(cfg["ping"])
+        for key in ("targets_v4", "targets_v6"):
+            cfg["ping"][key] = ",".join(settings[key])
+        for section, values in DEFAULTS.items():
+            if not cfg.has_section(section):
+                cfg.add_section(section)
+            for key, value in values.items():
+                if key not in cfg[section]:
+                    cfg[section][key] = value
     else:
+        cfg.read_dict(DEFAULTS)
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             cfg.write(f)
     return cfg
@@ -179,6 +209,9 @@ def fmt_speed(bytes_per_sec: float) -> str:
         kbps = (bytes_per_sec * 8) / 1_000
         return f"{kbps:.0f} Kbps"
     return f"{mbps:.1f} Mbps"
+
+
+PING_LOSS_COLOR = "#ff6b6b"
 
 
 def fmt_temp(value) -> str:
@@ -442,6 +475,10 @@ class Metrics:
         self.gpu_usage = None
         self.cpu_temp_error = None
         self.gpu_error = None
+        self.ping: tuple[tuple[str, float, float | None, bool], ...] | None = None
+        self.ping_family = "ipv4"
+        self.ping_auto = True
+        self.ping_other = ()
 
     def snapshot(self):
         with self.lock:
@@ -455,6 +492,10 @@ class Metrics:
                 gpu_usage=self.gpu_usage,
                 cpu_temp_error=self.cpu_temp_error,
                 gpu_error=self.gpu_error,
+                ping=self.ping,
+                ping_family=self.ping_family,
+                ping_auto=self.ping_auto,
+                ping_other=self.ping_other,
             )
 
 
@@ -516,8 +557,11 @@ class MonitorWindow:
     handler deleted by the wrong thread", exit 3). Reproduced in isolation;
     a single long-lived Tk + per-window Toplevel does not crash."""
 
-    def __init__(self, master: tk.Tk, cfg: configparser.ConfigParser, metrics: Metrics, mode: str):
+    def __init__(self, master: tk.Tk, cfg: configparser.ConfigParser, metrics: Metrics, mode: str, ping_monitor=None):
         self.master = master
+        self.ping_monitor = ping_monitor
+        self.reconfigure_requested = False
+        self._ping_editor = None
         self.full_cfg = cfg
         self.cfg = cfg["window"]
         self.metrics = metrics
@@ -541,6 +585,13 @@ class MonitorWindow:
             self.root.configure(bg=self.cfg["bg_color"])
 
         self._drag = {"x": 0, "y": 0}
+        self.ping_enabled = cfg.getboolean("ping", "enabled", fallback=True)
+        settings = ping_settings(cfg["ping"])
+        self.ping_groups = {"ipv4": settings["targets_v4"], "ipv6": settings["targets_v6"]}
+        self._ping_layout_family = initial_ping_family(settings["mode"], settings["preferred"], self.ping_groups)
+        self.ping_timeout_ms = cfg.getint("ping", "timeout_ms", fallback=1000)
+        self.ping_labels = []
+        self._fg = self.cfg["fg_color"]
         self._build_ui()
         self._place_window()
         self._bind_drag()
@@ -574,6 +625,10 @@ class MonitorWindow:
             self.lbl_up.pack(anchor="w")
             self.lbl_down.pack(anchor="w")
 
+            if self.ping_enabled:
+                colp = self._build_ping_panel(frame, bg, font)
+                colp.pack(side="left", fill="y", padx=(4, 4), before=col2)
+
             self.lbl_cpu = tk.Label(col2, text="CPU --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_gpu = tk.Label(col2, text="GPU --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_cpu.pack(anchor="w")
@@ -587,12 +642,16 @@ class MonitorWindow:
             pad = dict(padx=6, pady=1)
             self.lbl_up = tk.Label(frame, text="↑ -- KB/s", fg=self.cfg["accent_up"], bg=bg, font=font, anchor="w")
             self.lbl_down = tk.Label(frame, text="↓ -- KB/s", fg=self.cfg["accent_down"], bg=bg, font=font, anchor="w")
+            if self.ping_enabled:
+                self.ping_panel = self._build_ping_panel(frame, bg, font)
             self.lbl_cpu = tk.Label(frame, text="CPU: --%  --°C", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_gpu = tk.Label(frame, text="GPU: --%  --°C", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_mem = tk.Label(frame, text="MEM: --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_status = tk.Label(frame, text="", fg="#ff6b6b", bg=bg, font=("Segoe UI", 7), anchor="w")
 
-            for w in (self.lbl_up, self.lbl_down, self.lbl_cpu, self.lbl_gpu, self.lbl_mem):
+            widgets = (self.lbl_up, self.lbl_down) + ((self.ping_panel,) if self.ping_enabled else ()) \
+                + (self.lbl_cpu, self.lbl_gpu, self.lbl_mem)
+            for w in widgets:
                 w.pack(fill="x", **pad)
             self.lbl_status.pack(fill="x", padx=6)
 
@@ -600,35 +659,88 @@ class MonitorWindow:
             close_btn.place(relx=1.0, y=2, anchor="ne")
             close_btn.bind("<Button-1>", lambda e: self.quit())
 
+    def _build_ping_panel(self, parent, bg, font):
+        measured = tkfont.Font(root=self.root, font=font)
+        width = ping_column_width(measured.measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms)
+        marker_width = measured.measure("v6·A ")
+        height = measured.metrics("linespace")
+        panel = tk.Frame(parent, bg=bg, width=width, height=2 * height)
+        self.ping_panel = panel
+        self._ping_font = measured
+        panel.pack_propagate(False)
+        common = dict(bg=bg, fg=self._fg, font=font, anchor="w", bd=0, padx=0, pady=0)
+        self.ping_marker_label = tk.Label(panel, text="", **common)
+        self.ping_marker_label.place(x=0, y=0, width=marker_width, height=height)
+        self.ping_labels = [tk.Label(panel, text="", **common) for _ in range(2)]
+        for index, label in enumerate(self.ping_labels):
+            label.place(x=marker_width, y=index * height, width=width-marker_width, height=height)
+        return panel
+
     def _build_embedded_ui(self):
         """Same content/format as the docked strip, laid out with fixed,
         font-measured columns on a transparent (colour-keyed) background."""
         key = EMBED_KEY_COLOR
         fg = self.cfg["fg_color"]
         self.font = tkfont.Font(root=self.root, family="Segoe UI", size=self.cfg.getint("font_size"))
-        measure = self.font.measure
         self._line_h = self.font.metrics("linespace")
+        self._calculate_embedded_columns()
+
+        common = dict(bg=key, font=self.font, anchor="w", bd=0, padx=0, pady=0, highlightthickness=0)
+        self.lbl_up = tk.Label(self.root, text="↑ --", fg=self.cfg["accent_up"], **common)
+        self.lbl_down = tk.Label(self.root, text="↓ --", fg=self.cfg["accent_down"], **common)
+        if self.ping_enabled:
+            self.ping_marker_label = tk.Label(self.root, text="", fg=fg, **common)
+            self.ping_labels = [tk.Label(self.root, text="", fg=fg, **common) for _ in range(2)]
+        self.lbl_cpu = tk.Label(self.root, text="CPU --%", fg=fg, **common)
+        self.lbl_gpu = tk.Label(self.root, text="GPU --%", fg=fg, **common)
+        self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
+        self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
+
+    def _calculate_embedded_columns(self):
+        measure = self.font.measure
         pad, gap = 4, 10
         w_net = measure("↓1000.0 Mbps")
+        w_ping = ping_column_width(
+            measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms
+        ) if self.ping_enabled else 0
+        self._ping_marker_width = measure("v6·A ")
         w_hw = max(measure("CPU 100% 100°"), measure("GPU 100% 100°"))
         w_mem = measure("MEM 100%")
         w_st = measure("⚠") + 2
+        x_hw = pad + w_net + gap + w_ping + (gap if self.ping_enabled else 0)
         self._cols = {
             "net": (pad, w_net),
-            "hw": (pad + w_net + gap, w_hw),
-            "mem": (pad + w_net + gap + w_hw + gap, w_mem),
+            "ping": (pad + w_net + gap, w_ping),
+            "hw": (x_hw, w_hw),
+            "mem": (x_hw + w_hw + gap, w_mem),
         }
         x_st = self._cols["mem"][0] + w_mem + 2
         self._cols["st"] = (x_st, w_st)
         self.embed_width = x_st + w_st + pad
 
-        common = dict(bg=key, font=self.font, anchor="w", bd=0, padx=0, pady=0, highlightthickness=0)
-        self.lbl_up = tk.Label(self.root, text="↑ --", fg=self.cfg["accent_up"], **common)
-        self.lbl_down = tk.Label(self.root, text="↓ --", fg=self.cfg["accent_down"], **common)
-        self.lbl_cpu = tk.Label(self.root, text="CPU --%", fg=fg, **common)
-        self.lbl_gpu = tk.Label(self.root, text="GPU --%", fg=fg, **common)
-        self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
-        self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
+    def _relayout_ping(self, family):
+        """Resize existing controls on the Tk thread, never rebuild/re-embed."""
+        self._ping_layout_family = family
+        if self.mode == "taskbar":
+            self._calculate_embedded_columns()
+            if self.embedder is not None:
+                self.embedder.width = self.embed_width
+            self._layout_embedded(self.root.winfo_height())
+            if self.embedder is not None:
+                self.embedder.reposition()
+        else:
+            width = ping_column_width(
+                self._ping_font.measure, self.ping_groups[family], self.ping_timeout_ms)
+            self.ping_panel.config(width=width)
+            marker_width = self._ping_font.measure("v6·A ")
+            for label in self.ping_labels:
+                label.place_configure(width=width - marker_width)
+            if self.mode == "docked":
+                self._dock_to_taskbar()
+            else:
+                self.root.update_idletasks()
+                self.root.geometry(f"{max(150, self.root.winfo_reqwidth())}x"
+                                   f"{max(130, self.root.winfo_reqheight())}")
 
     def _layout_embedded(self, height: int):
         ls = self._line_h
@@ -637,12 +749,19 @@ class MonitorWindow:
         ym = max(0, (height - ls) // 2)
         placements = (
             (self.lbl_up, "net", y0), (self.lbl_down, "net", y1),
+            *((label, "ping", y0 + i * ls) for i, label in enumerate(self.ping_labels)),
             (self.lbl_cpu, "hw", y0), (self.lbl_gpu, "hw", y1),
             (self.lbl_mem, "mem", ym), (self.lbl_status, "st", ym),
         )
         for lbl, col, y in placements:
             x, w = self._cols[col]
+            if col == "ping":
+                x += self._ping_marker_width
+                w -= self._ping_marker_width
             lbl.place(x=x, y=y, width=w, height=ls)
+        if self.ping_enabled:
+            self.ping_marker_label.place(x=self._cols["ping"][0], y=y0,
+                                         width=self._ping_marker_width, height=ls)
 
     def _place_window(self):
         self.root.update_idletasks()
@@ -651,7 +770,8 @@ class MonitorWindow:
         elif self.mode == "docked":
             self._dock_to_taskbar()
         else:
-            w, h = 150, 130
+            w = max(150, self.root.winfo_reqwidth())
+            h = max(130, self.root.winfo_reqheight())
             cfg_x, cfg_y = self.cfg["x"], self.cfg["y"]
             if cfg_x == "auto" or cfg_y == "auto":
                 sw = self.root.winfo_screenwidth()
@@ -688,7 +808,11 @@ class MonitorWindow:
         composition on Win11 even when TOPMOST; the in-taskbar look is the
         "taskbar" mode, which embeds as a child window instead."""
         rect = get_taskbar_rect()
-        w = self.cfg.getint("taskbar_width")
+        ping_width = 0
+        if self.ping_enabled:
+            font = tkfont.Font(root=self.root, family="Segoe UI", size=self.cfg.getint("font_size"))
+            ping_width = ping_column_width(font.measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms) + 12
+        w = self.cfg.getint("taskbar_width") + ping_width
         h = self.cfg.getint("docked_height", fallback=36)
         if rect is None:
             sw = self.root.winfo_screenwidth()
@@ -722,8 +846,17 @@ class MonitorWindow:
         self.root.bind("<ButtonRelease-1>", release)
 
     def _bind_menu(self):
-        # Right-click context menu (minimal: quit)
+        # Right-click menu, scoped to this widget incarnation.
         menu = tk.Menu(self.root, tearoff=0)
+        if self.ping_enabled and self.ping_monitor is not None:
+            self._ping_mode_var = tk.StringVar(master=self.master, value=self.ping_monitor.mode)
+            for title, value in (("Automático", "auto"), ("Só IPv4", "ipv4"), ("Só IPv6", "ipv6")):
+                available = value == "auto" or bool(self.ping_monitor.groups[value])
+                menu.add_radiobutton(label=title, value=value, variable=self._ping_mode_var,
+                                     state="normal" if available else "disabled",
+                                     command=lambda mode=value: self._select_ping_mode(mode))
+            menu.add_command(label="Configurar destinos…", command=self._edit_ping_targets)
+            menu.add_separator()
         menu.add_command(label="Fechar", command=self.quit)
 
         def show_menu(e):
@@ -742,6 +875,105 @@ class MonitorWindow:
         # would keep pointing at this window's command after a rebuild.
         self.root.bind("<Button-3>", show_menu)
 
+    def _select_ping_mode(self, mode):
+        previous = self.ping_monitor.mode
+        try:
+            settings = {"mode": mode}
+            # Do not lose legacy destinations when removing its obsolete key.
+            if "targets" in self.full_cfg["ping"]:
+                settings.update(targets_v4=",".join(self.ping_monitor.groups["ipv4"]),
+                                targets_v6=",".join(self.ping_monitor.groups["ipv6"]))
+            save_ping_settings(CONFIG_PATH, **settings)
+        except (OSError, configparser.Error) as exc:
+            self._ping_mode_var.set(previous)
+            _log_event(f"ping: mode save failed: {exc}")
+            return
+        self.full_cfg["ping"].pop("targets", None)
+        self.full_cfg["ping"].update(settings)
+        self.ping_monitor.set_mode(mode)
+        self._ping_mode_var.set(mode)
+        self._update_labels()
+        _log_event(f"ping: mode changed to {mode}")
+
+    def _close_ping_editor(self):
+        editor, self._ping_editor = self._ping_editor, None
+        if editor is not None:
+            try:
+                editor.destroy()
+            except tk.TclError:
+                pass
+
+    def _save_ping_targets(self, values, preferred, error_label):
+        try:
+            v4, v6 = parse_ping_groups(values, preferred)
+            settings = dict(targets_v4=",".join(v4), targets_v6=",".join(v6), preferred=preferred)
+            mode = self.ping_monitor.mode
+            if mode in ("ipv4", "ipv6") and not (v4 if mode == "ipv4" else v6):
+                settings["mode"] = "ipv6" if mode == "ipv4" else "ipv4"
+            save_ping_settings(CONFIG_PATH, **settings)
+        except (ValueError, OSError, configparser.Error) as exc:
+            error_label.config(text=f"Não foi possível salvar: {exc}")
+            return
+        # Close before touching the monitor or rebuilding its embedded window.
+        self._close_ping_editor()
+        self.full_cfg["ping"].pop("targets", None)
+        self.full_cfg["ping"].update(settings)
+        self.ping_monitor.set_groups(v4, v6, preferred)
+        _log_event(f"ping: groups changed: IPv4={','.join(v4)} IPv6={','.join(v6)} preferred={preferred}")
+        self.reconfigure_requested = True
+        self._destroy()
+
+    def _edit_ping_targets(self):
+        if self._closing or self.ping_monitor is None:
+            return
+        if self._ping_editor is not None and self._ping_editor.winfo_exists():
+            self._ping_editor.lift()
+            self._ping_editor.focus_force()
+            return
+        # Never parent this dialog to the widget reparented into Explorer.
+        editor = tk.Toplevel(self.master)
+        self._ping_editor = editor
+        editor.withdraw()
+        editor.title("SysMonitor · destinos de ping")
+        editor.attributes("-topmost", True)
+        editor.resizable(False, False)
+        editor.protocol("WM_DELETE_WINDOW", self._close_ping_editor)
+        frame = tk.Frame(editor, padx=16, pady=12)
+        frame.pack(fill="both", expand=True)
+        entries = []
+        groups = self.ping_monitor.groups
+        targets = [*groups["ipv4"], *([""] * (2 - len(groups["ipv4"]))),
+                   *groups["ipv6"], *([""] * (2 - len(groups["ipv6"])))]
+        for index, title in enumerate(("IPv4 1", "IPv4 2", "IPv6 1", "IPv6 2")):
+            tk.Label(frame, text=title, anchor="w").pack(fill="x")
+            entry = tk.Entry(frame, width=48)
+            entry.pack(fill="x", pady=(2, 8))
+            if index < len(targets):
+                entry.insert(0, targets[index])
+            entries.append(entry)
+        tk.Label(frame, text="Preferido no automático:", anchor="w").pack(fill="x")
+        preferred = tk.StringVar(master=editor, value=self.ping_monitor.preferred)
+        for title, value in (("IPv4", "ipv4"), ("IPv6", "ipv6")):
+            tk.Radiobutton(frame, text=title, value=value, variable=preferred).pack(anchor="w")
+        error = tk.Label(frame, text="", fg="red", wraplength=420, justify="left")
+        error.pack(fill="x", pady=(6, 0))
+        buttons = tk.Frame(frame)
+        buttons.pack(anchor="e", pady=(8, 0))
+        def save(event=None):
+            self._save_ping_targets([entry.get() for entry in entries], preferred.get(), error)
+        tk.Button(buttons, text="Salvar", command=save).pack(side="left", padx=4)
+        tk.Button(buttons, text="Cancelar", command=self._close_ping_editor).pack(side="left")
+        editor.bind("<Return>", save)
+        editor.bind("<Escape>", lambda event: self._close_ping_editor())
+        editor.update_idletasks()
+        width, height = editor.winfo_reqwidth(), editor.winfo_reqheight()
+        x = (editor.winfo_screenwidth() - width) // 2
+        y = (editor.winfo_screenheight() - height) // 2
+        editor.geometry(f"{width}x{height}+{x}+{y}")
+        editor.deiconify()
+        editor.lift()
+        entries[0].focus_force()
+
     # -- lifecycle --------------------------------------------------------
     def quit(self):
         self.exit_requested = True
@@ -755,6 +987,7 @@ class MonitorWindow:
         if self._closing:
             return
         self._closing = True
+        self._close_ping_editor()
         if self._after_id is not None:
             try:
                 self.root.after_cancel(self._after_id)
@@ -770,6 +1003,9 @@ class MonitorWindow:
         # rather than later by the GC on some other thread.
         self.embedder = None
         self.font = None
+        self._ping_font = None
+        if hasattr(self, "_ping_mode_var"):
+            del self._ping_mode_var
         # The hidden process-wide root keeps mainloop alive; leave it.
         self.master.quit()
 
@@ -802,6 +1038,19 @@ class MonitorWindow:
             self.lbl_cpu.config(text=f"CPU: {m['cpu_percent']:.0f}%  {cpu_t}°C")
             self.lbl_gpu.config(text=f"GPU: {gpu_u}%  {gpu_t}°C")
             self.lbl_mem.config(text=f"MEM: {m['mem_percent']:.0f}%")
+
+        if self.ping_enabled:
+            if m["ping_family"] != self._ping_layout_family:
+                self._relayout_ping(m["ping_family"])
+            results = m["ping"] or ()
+            self.ping_marker_label.config(text=ping_marker(m["ping_family"], m["ping_auto"]))
+            for index, label in enumerate(self.ping_labels):
+                if index < len(results):
+                    ip, loss, rtt, ok = results[index]
+                    label.config(text=fmt_ping_line(ip, loss, rtt, ok),
+                                 fg=PING_LOSS_COLOR if ping_has_problem(loss, ok) else self._fg)
+                else:
+                    label.config(text="", fg=self._fg)
 
         self.lbl_status.config(text="⚠" if (m["cpu_temp_error"] or m["gpu_error"]) else "")
 
@@ -850,6 +1099,9 @@ def main():
     metrics = Metrics()
     collector = Collector(metrics, interval_s=int(cfg["window"]["update_interval_ms"]) / 1000.0)
     collector.start()
+    ping = PingMonitor.from_config(cfg["ping"], metrics, on_event=_log_event)
+    if ping:
+        ping.start()
 
     # ONE Tk interpreter for the whole process, created and (never) freed on
     # this thread; each widget incarnation is a Toplevel of it. See the
@@ -867,7 +1119,7 @@ def main():
                 mode = "docked"
             started = time.monotonic()
             window = None
-            window = MonitorWindow(app_root, cfg, metrics, mode)
+            window = MonitorWindow(app_root, cfg, metrics, mode, ping_monitor=ping)
             if window.embed_failed:
                 _log_event("embedding failed; falling back to docked mode for this session")
                 window._destroy()
@@ -876,6 +1128,8 @@ def main():
             window.run()
             if window.exit_requested:
                 break
+            if window.reconfigure_requested:
+                continue
             # The window went away without the user closing it: in taskbar
             # mode that means Explorer restarted and destroyed our parent.
             lived = time.monotonic() - started
@@ -887,6 +1141,8 @@ def main():
             time.sleep(2)
     finally:
         collector.stop()
+        if ping:
+            ping.stop()
 
 
 if __name__ == "__main__":

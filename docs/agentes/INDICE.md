@@ -1,4 +1,4 @@
-Atualizado em 2026-10-08 (branch main, commit 4b40627)
+Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6 e seleção automática; commit "perda de pacotes por grupo IPv4/IPv6")
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -13,11 +13,11 @@ python3 tray_monitor.py
 python3 sensors.py
 python3 create_shortcut.py
 ```
-Não há suíte automatizada nem comando de build no repositório.
+Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Não há comando de build no repositório.
 
 ## Estado
-Sem versão formal declarada. Branch `main`; base de código `4b40627`, sincronizada com `origin/main`.
-Última mudança funcional: migração HWiNFO → NVML/LHM; detalhes em [estado.md](estado.md).
+Sem versão formal declarada. Branch `main`; commits locais à frente de `origin/main` (sem push).
+Última mudança funcional: perda de pacotes por grupo IPv4/IPv6 com troca automática (2026-10-21); detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |

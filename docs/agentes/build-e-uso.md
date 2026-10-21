@@ -1,4 +1,4 @@
-Atualizado em 2026-10-08 (commit 4b40627)
+Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6; commit "perda de pacotes por grupo IPv4/IPv6")
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -43,7 +43,10 @@ python3 create_shortcut.py
 - Valores atuais do arquivo local não foram reproduzidos nem alterados nesta tarefa.
 
 ## Testes e build
-- Não há suíte automatizada, CI, instalador, distribuição binária nem comando de build no Git.
+- Suíte automatizada stdlib: `py -3.12 -m unittest discover -s tests -v` (na raiz, sem instalar pytest). Cobre coleta por destino, janela, alertas, recuperação e formatação. Usar `py -3.12`: é o Python do widget (Store) e o único com `psutil`; o `python` do PATH (3.14) não tem.
+- Compilação sintática: `py -3.12 -m py_compile` com todas as fontes `.py` da raiz (inclusive `ping_config.py`).
+- Suíte também cobre grupos por família/migração legada, troca/retorno/geração, persistência atômica, editor de quatro campos, marcadores, rádios e alinhamento/largura estável. Testes usam mocks/AST para não abrir o widget nem importar entradas Win32.
+- Não há CI, instalador, distribuição binária nem comando de build no Git.
 - Diagnóstico existente: `python3 sensors.py`; as duas entradas devem ser verificadas manualmente em Windows.
 - Roteiro futuro: sensores com/sem LHM; GPU indisponível; três modos do widget; arraste/persistência; menu Fechar.
 - Verificar boot, instância repetida, Start aberto, DPI/monitor e recuperação após reiniciar Explorer.

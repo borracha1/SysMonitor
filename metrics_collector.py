@@ -25,6 +25,10 @@ class Metrics:
         self.gpu_usage = None
         self.cpu_temp_error = None
         self.gpu_error = None
+        self.ping: tuple[tuple[str, float, float | None, bool], ...] | None = None
+        self.ping_family = "ipv4"
+        self.ping_auto = True
+        self.ping_other = ()
 
     def snapshot(self):
         with self.lock:
@@ -38,6 +42,10 @@ class Metrics:
                 gpu_usage=self.gpu_usage,
                 cpu_temp_error=self.cpu_temp_error,
                 gpu_error=self.gpu_error,
+                ping=self.ping,
+                ping_family=self.ping_family,
+                ping_auto=self.ping_auto,
+                ping_other=self.ping_other,
             )
 
 

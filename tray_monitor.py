@@ -21,6 +21,7 @@ Hover tooltip on each icon shows the full picture as text for anyone who
 wants more precision than the tiny bitmap can render.
 """
 import sys
+import configparser
 import time
 import ctypes
 from ctypes import wintypes
@@ -30,6 +31,7 @@ from pathlib import Path
 from datetime import datetime
 
 from metrics_collector import Metrics, Collector
+from ping_monitor import PingMonitor, ping_marker, fmt_ping_line
 
 APP_NAME = "SysMonitorTray"
 CRASH_LOG_PATH = Path(__file__).with_name("crash.log")
@@ -311,7 +313,7 @@ class TrayIconSlot:
         lines, tooltip = self.render_fn(m)
         self._current_icon = make_text_icon(lines, icon_w, icon_h)
         self.nid.hIcon = self._current_icon
-        self.nid.szTip = tooltip
+        self.nid.szTip = tooltip[:127]
         shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self.nid))
 
     def update(self, icon_w, icon_h, m):
@@ -319,7 +321,7 @@ class TrayIconSlot:
         new_icon = make_text_icon(lines, icon_w, icon_h)
         old_icon = self._current_icon
         self.nid.hIcon = new_icon
-        self.nid.szTip = tooltip
+        self.nid.szTip = tooltip[:127]
         self._current_icon = new_icon
         shell32.Shell_NotifyIconW(NIM_MODIFY, ctypes.byref(self.nid))
         if old_icon:
@@ -337,7 +339,17 @@ def render_net(m):
     down = fmt_compact(m["down_speed"])
     lines = [f"↑{up}", f"↓{down}"]
     tooltip = f"Rede: ↑ {fmt_speed_full(m['up_speed'])}  ↓ {fmt_speed_full(m['down_speed'])}"
-    return lines, tooltip
+    if m.get("ping"):
+        marker = ping_marker(m.get("ping_family", "ipv4"), m.get("ping_auto", True))
+        active = "\n" + marker + " " + " / ".join(fmt_ping_line(*result) for result in m["ping"])
+        # Active destinations get the budget first; trim network summary before them.
+        tooltip = tooltip[:max(0, 127 - len(active))] + active
+        other = m.get("ping_other") or ()
+        if other:
+            family = "ipv6" if m.get("ping_family", "ipv4") == "ipv4" else "ipv4"
+            inactive = "\n" + ping_marker(family, False) + " " + " / ".join(fmt_ping_line(*r) for r in other)
+            tooltip += inactive[:max(0, 127 - len(tooltip))]
+    return lines, tooltip[:127]
 
 
 def render_cpu(m):
@@ -375,6 +387,13 @@ def run():
     metrics = Metrics()
     collector = Collector(metrics, interval_s=1.0)
     collector.start()
+    cfg = configparser.ConfigParser()
+    cfg.read(Path(__file__).with_name("config.ini"), encoding="utf-8")
+    if not cfg.has_section("ping"):
+        cfg.add_section("ping")
+    ping = PingMonitor.from_config(cfg["ping"], metrics)
+    if ping:
+        ping.start()
 
     hInstance = kernel32.GetModuleHandleW(None)
 
@@ -443,6 +462,8 @@ def run():
         for slot in slots:
             slot.remove()
         collector.stop()
+        if ping:
+            ping.stop()
 
 
 if __name__ == "__main__":
