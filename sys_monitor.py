@@ -42,7 +42,8 @@ import tkinter.font as tkfont
 from sensors import SensorReader
 from ping_monitor import (PingMonitor, ping_settings, parse_ping_groups, fmt_ping_line,
                           ping_has_problem, ping_marker, ping_column_width, initial_ping_family)
-from ping_config import save_ping_settings
+from ping_config import save_ping_settings, save_window_settings
+from net_split import PacketCounters, split_rates, net_column_width
 
 APP_NAME = "SysMonitor"
 CONFIG_PATH = Path(__file__).with_name("config.ini")
@@ -144,6 +145,7 @@ DEFAULTS = {
         # "taskbar" = embedded inside the taskbar (TrafficMonitor-style),
         # "docked" = strip just above the taskbar, "floating" = draggable box
         "display_mode": "taskbar",
+        "net_split": "false",
         "x": "auto",       # "auto" = bottom-right near tray; else integer (floating mode only)
         "y": "auto",
         "opacity": "0.95",       # docked/floating only
@@ -299,8 +301,8 @@ def get_taskbar_rect():
 #     applied post-reparent paints on top, with the key colour transparent.
 #     So no Tk "-alpha"/"-topmost" in this mode (-alpha makes the window
 #     layered before the reparent).
-# Trade-off (same as TrafficMonitor): colour-keyed pixels are click-through,
-# so the right-click menu opens only when clicking on the text itself.
+# Colour-keyed text pixels remain click-through; an alpha=1 sibling underneath
+# catches background clicks across the entire widget without an opaque panel.
 #
 # Caveat: a cross-process parent/child attaches input queues, so the Tk
 # thread must never block (all slow I/O lives in the Collector thread).
@@ -338,6 +340,7 @@ WS_CHILD = 0x40000000
 WS_POPUP = 0x80000000
 WS_EX_LAYERED = 0x00080000
 LWA_COLORKEY = 0x1
+LWA_ALPHA = 0x2
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
@@ -397,7 +400,8 @@ class TaskbarEmbedder:
     of TrayNotifyWnd, and re-docks it when the tray width / taskbar height
     changes or Explorer is restarted."""
 
-    def __init__(self, hwnd: int, width: int, on_height_change=None):
+    def __init__(self, hwnd: int, width: int, on_height_change=None, catcher_hwnd=None):
+        self.catcher_hwnd = catcher_hwnd
         self.hwnd = hwnd
         self.width = width
         self.on_height_change = on_height_change
@@ -407,6 +411,8 @@ class TaskbarEmbedder:
     def embed(self) -> bool:
         tray, _ = find_taskbar()
         if not tray:
+            return False
+        if self.catcher_hwnd and not self._embed_catcher(tray):
             return False
         h = self.hwnd
         # Layered must be (re)applied only after the reparent (see header).
@@ -430,11 +436,27 @@ class TaskbarEmbedder:
         _log_event(f"embedded into taskbar (tray hwnd={tray}, width={self.width})")
         return True
 
+    def _embed_catcher(self, tray):
+        h = self.catcher_hwnd
+        if not _u32.IsWindow(h):
+            return False
+        ex = _u32.GetWindowLongPtrW(h, GWL_EXSTYLE)
+        _u32.SetWindowLongPtrW(h, GWL_EXSTYLE, ex & ~WS_EX_LAYERED)
+        style = _u32.GetWindowLongPtrW(h, GWL_STYLE)
+        _u32.SetWindowLongPtrW(h, GWL_STYLE, (style & ~WS_POPUP) | WS_CHILD)
+        _u32.SetParent(h, tray)
+        if _u32.GetParent(h) != tray:
+            return False
+        _u32.SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_LAYERED)
+        return bool(_u32.SetLayeredWindowAttributes(h, 0, 1, LWA_ALPHA))
+
     def healthy(self) -> bool:
         if not self.tray or not _u32.IsWindow(self.hwnd):
             return False
         tray, _ = find_taskbar()
-        return tray == self.tray and _u32.GetParent(self.hwnd) == self.tray
+        return (tray == self.tray and _u32.GetParent(self.hwnd) == self.tray
+                and (not self.catcher_hwnd or (_u32.IsWindow(self.catcher_hwnd)
+                     and _u32.GetParent(self.catcher_hwnd) == self.tray)))
 
     def reposition(self):
         tray = self.tray
@@ -454,6 +476,12 @@ class TaskbarEmbedder:
         if cur is None or (cur.left, cur.top, cur.right, cur.bottom) != want:
             _u32.SetWindowPos(self.hwnd, None, x, 0, self.width, height,
                               SWP_NOZORDER | SWP_NOACTIVATE)
+        if self.catcher_hwnd:
+            # First raise text; then insert the catcher immediately below it.
+            _u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0,
+                              SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+            _u32.SetWindowPos(self.catcher_hwnd, self.hwnd, x, 0, self.width, height,
+                              SWP_NOACTIVATE)
         # Stay above the taskbar's own XAML content-bridge sibling.
         if _u32.GetWindow(tray, GW_CHILD) != self.hwnd:
             _u32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0,
@@ -468,6 +496,7 @@ class Metrics:
         self.lock = threading.Lock()
         self.up_speed = 0.0
         self.down_speed = 0.0
+        self.net_rates = None
         self.cpu_percent = 0.0
         self.mem_percent = 0.0
         self.cpu_temp = None
@@ -485,6 +514,7 @@ class Metrics:
             return dict(
                 up_speed=self.up_speed,
                 down_speed=self.down_speed,
+                net_rates=self.net_rates,
                 cpu_percent=self.cpu_percent,
                 mem_percent=self.mem_percent,
                 cpu_temp=self.cpu_temp,
@@ -508,6 +538,8 @@ class Collector(threading.Thread):
         self._sensors = SensorReader()
         self._last_net = psutil.net_io_counters()
         self._last_net_time = time.time()
+        self._packets = PacketCounters(_log_event)
+        self._last_packets = None
 
     def stop(self):
         self._stop.set()
@@ -531,11 +563,15 @@ class Collector(threading.Thread):
         cpu_percent = psutil.cpu_percent(interval=None)
         mem_percent = psutil.virtual_memory().percent
 
+        packets = self._packets.read()
+        rates = split_rates(up, down, self._last_packets, packets)
+        self._last_packets = packets
         sensors = self._sensors.read()
 
         with self.metrics.lock:
             self.metrics.up_speed = up
             self.metrics.down_speed = down
+            self.metrics.net_rates = rates
             self.metrics.cpu_percent = cpu_percent
             self.metrics.mem_percent = mem_percent
             for key, value in sensors.items():
@@ -568,6 +604,7 @@ class MonitorWindow:
         self.mode = mode
         self.exit_requested = False  # True only when the user chose "Fechar"
         self.embed_failed = False
+        self.click_catcher = None
         self.embedder = None
         self._closing = False
         self._after_id = None
@@ -592,6 +629,9 @@ class MonitorWindow:
         self.ping_timeout_ms = cfg.getint("ping", "timeout_ms", fallback=1000)
         self.ping_labels = []
         self._fg = self.cfg["fg_color"]
+        self.net_split = self.cfg.getboolean("net_split", fallback=False)
+        self._net_active = False
+        self._net_cells = []
         self._build_ui()
         self._place_window()
         self._bind_drag()
@@ -699,7 +739,7 @@ class MonitorWindow:
     def _calculate_embedded_columns(self):
         measure = self.font.measure
         pad, gap = 4, 10
-        w_net = measure("↓1000.0 Mbps")
+        w_net = net_column_width(measure, getattr(self, "_net_active", False))
         w_ping = ping_column_width(
             measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms
         ) if self.ping_enabled else 0
@@ -798,7 +838,18 @@ class MonitorWindow:
         if not wrapper:
             self.embed_failed = True
             return
-        self.embedder = TaskbarEmbedder(wrapper, self.embed_width, on_height_change=self._layout_embedded)
+        self.click_catcher = tk.Toplevel(self.master)
+        self.click_catcher.overrideredirect(True)
+        self.click_catcher.configure(bg=EMBED_KEY_COLOR)
+        self.click_catcher.geometry(f"{self.embed_width}x{height}+-32000+-32000")
+        self.click_catcher.update_idletasks()
+        catcher_hwnd = _u32.GetParent(self.click_catcher.winfo_id())
+        if not catcher_hwnd:
+            self.embed_failed = True
+            return
+        self.embedder = TaskbarEmbedder(wrapper, self.embed_width,
+                                       on_height_change=self._layout_embedded,
+                                       catcher_hwnd=catcher_hwnd)
         if not self.embedder.embed():
             self.embed_failed = True
 
@@ -812,7 +863,14 @@ class MonitorWindow:
         if self.ping_enabled:
             font = tkfont.Font(root=self.root, family="Segoe UI", size=self.cfg.getint("font_size"))
             ping_width = ping_column_width(font.measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms) + 12
-        w = self.cfg.getint("taskbar_width") + ping_width
+        extra_net = 0
+        if getattr(self, "_net_active", False):
+            measure = self._net_font.measure
+            extra_net = net_column_width(measure, True) - net_column_width(measure, False)
+        w = self.cfg.getint("taskbar_width") + ping_width + extra_net
+        if getattr(self, "_net_active", False):
+            self.root.update_idletasks()
+            w = max(w, self.root.winfo_reqwidth())
         h = self.cfg.getint("docked_height", fallback=36)
         if rect is None:
             sw = self.root.winfo_screenwidth()
@@ -848,6 +906,10 @@ class MonitorWindow:
     def _bind_menu(self):
         # Right-click menu, scoped to this widget incarnation.
         menu = tk.Menu(self.root, tearoff=0)
+        self._net_mode_var = tk.BooleanVar(master=self.master, value=getattr(self, "net_split", False))
+        menu.add_checkbutton(label="Separar IPv4/IPv6 (estimado)", variable=self._net_mode_var,
+                             command=self._select_net_split)
+        menu.add_separator()
         if self.ping_enabled and self.ping_monitor is not None:
             self._ping_mode_var = tk.StringVar(master=self.master, value=self.ping_monitor.mode)
             for title, value in (("Automático", "auto"), ("Só IPv4", "ipv4"), ("Só IPv6", "ipv6")):
@@ -874,6 +936,65 @@ class MonitorWindow:
         # not bind_all: the "all" tag is shared by the process-wide Tk and
         # would keep pointing at this window's command after a rebuild.
         self.root.bind("<Button-3>", show_menu)
+        if getattr(self, "click_catcher", None) is not None:
+            self.click_catcher.bind("<Button-3>", show_menu)
+
+    def _select_net_split(self):
+        selected = bool(self._net_mode_var.get())
+        try:
+            save_window_settings(CONFIG_PATH, net_split=str(selected).lower())
+        except (OSError, configparser.Error) as exc:
+            self._net_mode_var.set(self.net_split)
+            _log_event(f"net split: save failed: {exc}")
+            return
+        self.cfg["net_split"] = str(selected).lower()
+        self.net_split = selected
+        self._update_labels()
+
+    def _update_net_split(self, metrics):
+        active = bool(getattr(self, "net_split", False) and metrics.get("net_rates") is not None)
+        changed = active != getattr(self, "_net_active", False)
+        self._net_active = active
+        if not active and not changed:
+            return
+        if not hasattr(self, "_net_font"):
+            self._net_font = tkfont.Font(root=self.root, font=self.lbl_up.cget("font"))
+        measure = self._net_font.measure
+        bg = EMBED_KEY_COLOR if self.mode == "taskbar" else self.cfg["bg_color"]
+        if changed:
+            for cell in self._net_cells:
+                cell.destroy()
+            self._net_cells = []
+            for host, accent in ((self.lbl_up, "accent_up"), (self.lbl_down, "accent_down")):
+                host.config(fg=bg if active else self.cfg[accent])
+                if active:
+                    # Reserve worst-case content, then draw independently aligned cells.
+                    host.config(text="↓ v4 1000.0 Mbps v6 1000.0 Mbps")
+                    for _ in range(4):
+                        self._net_cells.append(tk.Label(host, bg=bg, fg=self.cfg[accent],
+                            font=self._net_font, anchor="w", bd=0, padx=0, pady=0))
+            if self.mode == "taskbar":
+                self._relayout_ping(self._ping_layout_family)
+            elif self.mode == "docked":
+                self._dock_to_taskbar()
+            else:
+                self.root.update_idletasks()
+                self.root.geometry(f"{max(150, self.root.winfo_reqwidth())}x"
+                                   f"{max(130, self.root.winfo_reqheight())}")
+        if active:
+            widths = (max(measure("↑ v4 "), measure("↓ v4 ")),
+                      measure("1000.0 Mbps"), measure(" v6 "), measure("1000.0 Mbps"))
+            for row, arrow in enumerate(("↑", "↓")):
+                host = (self.lbl_up, self.lbl_down)[row]
+                host.config(text="↓ v4 1000.0 Mbps v6 1000.0 Mbps", fg=bg)
+                values = metrics["net_rates"][row]
+                texts = (f"{arrow} v4 ", fmt_speed(values[0]), " v6 ", fmt_speed(values[1]))
+                x = 0
+                for col, (text, width) in enumerate(zip(texts, widths)):
+                    cell = self._net_cells[row*4+col]
+                    cell.config(text=text)
+                    cell.place(x=x, y=0, width=width, relheight=1)
+                    x += width
 
     def _select_ping_mode(self, mode):
         previous = self.ping_monitor.mode
@@ -994,6 +1115,12 @@ class MonitorWindow:
             except tk.TclError:
                 pass
             self._after_id = None
+        if self.click_catcher is not None:
+            try:
+                self.click_catcher.destroy()
+            except tk.TclError:
+                pass
+            self.click_catcher = None
         try:
             self.root.destroy()
         except tk.TclError:
@@ -1004,6 +1131,10 @@ class MonitorWindow:
         self.embedder = None
         self.font = None
         self._ping_font = None
+        self._net_font = None
+        self._net_cells = []
+        if hasattr(self, "_net_mode_var"):
+            del self._net_mode_var
         if hasattr(self, "_ping_mode_var"):
             del self._ping_mode_var
         # The hidden process-wide root keeps mainloop alive; leave it.
@@ -1039,6 +1170,8 @@ class MonitorWindow:
             self.lbl_gpu.config(text=f"GPU: {gpu_u}%  {gpu_t}°C")
             self.lbl_mem.config(text=f"MEM: {m['mem_percent']:.0f}%")
 
+        self._update_net_split(m)
+
         if self.ping_enabled:
             if m["ping_family"] != self._ping_layout_family:
                 self._relayout_ping(m["ping_family"])
@@ -1062,7 +1195,8 @@ class MonitorWindow:
             if emb.healthy():
                 emb.reposition()  # tracks tray width / taskbar height changes
                 return
-            if not _u32.IsWindow(emb.hwnd):
+            if (not _u32.IsWindow(emb.hwnd) or
+                    (emb.catcher_hwnd and not _u32.IsWindow(emb.catcher_hwnd))):
                 self._request_rebuild("window handle gone")
                 return
             tray, notify = find_taskbar()

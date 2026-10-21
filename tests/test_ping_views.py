@@ -6,6 +6,7 @@ import threading
 import unittest
 
 from metrics_collector import Metrics
+from net_split import net_column_width
 from ping_monitor import fmt_ping_line, ping_has_problem, ping_marker, ping_column_width
 
 
@@ -31,6 +32,7 @@ class PingViewTests(unittest.TestCase):
                                 {'threading': threading, 'tk': SimpleNamespace(Tk=object),
                                  'configparser': SimpleNamespace(ConfigParser=object),
                                  'fmt_ping_line': fmt_ping_line, 'ping_has_problem': ping_has_problem,
+                                 'net_column_width': net_column_width,
                                  'PING_LOSS_COLOR': 'red', 'ping_marker': ping_marker, 'ping_column_width': ping_column_width})
 
     def test_both_metrics_contracts(self):

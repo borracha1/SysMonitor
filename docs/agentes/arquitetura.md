@@ -1,4 +1,4 @@
-Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6 e seleção automática; commit "perda de pacotes por grupo IPv4/IPv6")
+Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv6 estimado; sem commit)
 
 # Arquitetura e dados
 ## Módulos
@@ -7,7 +7,8 @@ Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6 e seleção automática;
 | `sys_monitor.py` | Entrada do widget; Win32, Tkinter, configuração, coleta própria e recuperação da janela |
 | `tray_monitor.py` | Entrada alternativa; janela Win32 oculta, mensagens, GDI e Shell_NotifyIcon |
 | `ping_monitor.py` | Grupos ICMP IPv4/IPv6 em thread própria, histórico por IP, seleção manual/automática, validação pura e toasts |
-| `ping_config.py` | Persistência atômica seletiva em `[ping]`, preserva demais chaves e remove `targets` antiga |
+| `ping_config.py` | Persistência atômica seletiva compartilhada em `[ping]`/`[window]`; só a gravação de ping remove `targets` antiga |
+| `net_split.py` | GetIpStatisticsEx sem admin, deltas DWORD, divisão pura de velocidades e medida da coluna |
 | `metrics_collector.py` | `Metrics` e `Collector` usados pela edição de bandeja |
 | `sensors.py` | NVML por ctypes e temperatura da CPU por HTTP/JSON do LHM |
 | `create_shortcut.py` | Atalhos do usuário no Menu Iniciar e Startup para o widget |
@@ -20,6 +21,8 @@ Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6 e seleção automática;
 - Collector → psutil e `SensorReader.read()` → atualização sob lock → `snapshot()` → renderização.
 - `Metrics.snapshot()` devolve uma cópia coerente: velocidades, uso CPU/memória, temperaturas, uso GPU e dois erros.
 - Widget mantém I/O nos coletores; Tk e reconstrução da janela ficam na thread principal.
+- Collector do widget lê `GetIpStatisticsEx` (AF_INET=2/AF_INET6=23) exclusivamente na thread de coleta. `dwOutRequests` reparte subida e `dwInReceives` descida: velocidade real psutil × proporção de pacotes no intervalo, não bytes reais por família. Zero pacotes produz zero; wrap DWORD próximo da borda é modular, demais recuos tratados como reset (delta zero).
+- Snapshot acrescenta `net_rates=((up_v4,up_v6),(down_v4,down_v6))` ou None (sem baseline/falha); Tk só formata. Falha da API registra log uma vez, invalida baseline e retorna à exibição total; recuperação exige duas amostras válidas consecutivas. A classe Metrics da bandeja mantém o campo para compatibilidade, mas a bandeja continua coletando/exibindo somente totais, sem chamar esta API.
 - Ping publica sob lock `ping` (grupo ativo), `ping_other` (inativo), `ping_family` e `ping_auto` nas DUAS classes Metrics/snapshot. Placeholders são publicados ao construir o monitor e ao editar grupos.
 - `set_mode`/`set_groups` usam RLock e geração: ciclo captura destinos/geração, faz I/O fora do lock e descarta resultados antigos. Modo preserva histórico; grupos zeram janelas/alertas. Famílias seguem sequenciais, com handle/buffer exclusivos da thread de coleta.
 - Contadores de ciclos limpos por família independem do tamanho da janela de perda, permitindo thresholds maiores que `window`. Failover/retorno não zeram histórico.

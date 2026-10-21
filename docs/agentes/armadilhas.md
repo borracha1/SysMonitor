@@ -1,4 +1,4 @@
-Atualizado em 2026-10-07 (commit 7400f35)
+Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv6 estimado; sem commit)
 
 # Armadilhas e decisões
 | Problema / decisão | Causa e regra para não repetir | Fonte |
@@ -9,7 +9,7 @@ Atualizado em 2026-10-07 (commit 7400f35)
 | Widget some mesmo com topmost | Z-order da faixa topmost muda; reafirmar SetWindowPos nos ticks | `_reassert_topmost()` |
 | Primeiro SetParent parecia falhar | Coordenadas são relativas ao pai; y de tela coloca filho fora da barra | `TaskbarEmbedder.reposition()` |
 | Filho fica coberto pela ponte XAML | Reaplicar WS_EX_LAYERED DEPOIS de SetParent; não usar Tk alpha/topmost no modo taskbar | `TaskbarEmbedder.embed()` |
-| Preto puro quebra menu no tema escuro | Cor-chave é #010101; clicar no texto, não no fundo transparente | `EMBED_KEY_COLOR`, comentário do embedding |
+| Cor-chave deixa cliques atravessarem o fundo | Manter #010101 no texto e uma Toplevel irmã com LWA_ALPHA=1 abaixo dele; SetParent antes de WS_EX_LAYERED nas duas. Não voltar a exigir clique nos traços das letras | `TaskbarEmbedder`, `test_taskbar_clicks.py` |
 | GUI pode travar Explorer | Pai/filho entre processos compartilham filas de input; I/O lento deve ficar no Collector | `sys_monitor.py` |
 | pythonw não pinta janela alpha neste PC | Código escolhe python.exe e oculta console; README diverge | `hide_console_window()`, `create_shortcut.py` |
 | Tcl aborta após reconstruir janela | GC pode liberar antigo tk.Tk em thread errada; raiz única e Toplevel por janela | `MonitorWindow` docstring |

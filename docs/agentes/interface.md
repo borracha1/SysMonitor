@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; automático mostra perda e preserva relayout; commit "perda de pacotes por grupo IPv4/IPv6")
+Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv6 estimado; sem commit)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -13,11 +13,13 @@ Atualizado em 2026-10-21 (branch main; automático mostra perda e preserva relay
 - Sensores ausentes mostram `--`; `cpu_temp_error` ou `gpu_error` ativa ⚠ vermelho.
 - Cores, Segoe UI e tamanho vêm de configuração; largura embutida é medida pela fonte.
 - Floating salva x/y ao soltar arraste; docked/taskbar derivam posição da barra.
-- Menu direito, só com ping habilitado e monitor existente: rádios `Automático`, `Só IPv4`, `Só IPv6` (grupo vazio desabilitado), `Configurar destinos…`, separador e `Fechar`. Seleção persiste `mode`, aplica `set_mode` imediatamente, sem reconstrução; falha de gravação mantém modo anterior e registra log. Floating também tem botão ✕.
+- Menu direito: caixa de tráfego estimado sempre presente; só com ping habilitado e monitor existente aparecem rádios `Automático`, `Só IPv4`, `Só IPv6` (grupo vazio desabilitado), `Configurar destinos…`, separador e `Fechar`. Seleção persiste `mode`, aplica `set_mode` imediatamente, sem reconstrução; falha de gravação mantém modo anterior e registra log. Floating também tem botão ✕.
 - Editor único `Toplevel(self.master)` do root oculto, nunca filho do widget embutido no Explorer: topmost, centralizado, não redimensionável, quatro campos `IPv4 1`, `IPv4 2`, `IPv6 1`, `IPv6 2` e rádios de preferido no automático. Validação estrita por família, duplicados canônicos rejeitados, pelo menos um IP e preferido não vazio; Salvar/Cancelar, Enter/Esc, erro vermelho local. Reabrir traz a instância existente para frente.
 - Salvar persiste `targets_v4`, `targets_v6`, `preferred` antes de aplicar `set_groups`; erro não aplica nada. Se a edição esvaziar a família manual atual, modo acompanha a única família restante, também persistido. Reconstrução intencional usa `reconfigure_requested`: imediata, sem pausa de 2 s, sem contar perda nem log `window lost`.
 - Verificação atual por fakes/AST: alinhamento das duas linhas, expansão IPv4→IPv6, encolhimento IPv6→IPv4 e ausência de relayout sem mudança nos três modos. A validação anterior em Tk oculto não comprovava espaçamento justo no IPv4; a correção ainda aguarda conferência interativa no Explorer/DPI do usuário após reinício manual autorizado. Esta tarefa não reiniciou o widget.
-- Taskbar exige clique no texto: pixels da cor transparente são click-through.
+- Taskbar: o texto continua com LWA_COLORKEY, mas uma segunda `Toplevel(self.master)` invisível, `overrideredirect`, recebe cliques no fundo/entre letras. Embutida no mesmo pai, usa WS_EX_LAYERED + LWA_ALPHA alpha=1 após SetParent; fica imediatamente abaixo do texto e acima dos demais irmãos, com o mesmo retângulo. As duas usam o mesmo callback de menu/GetCursorPos; criação/destruição acompanham o widget.
+- `net_split=false` mantém o total original. A caixa `Separar IPv4/IPv6 (estimado)` fica no topo do menu mesmo sem ping. Quando há contadores válidos, mostra `↑ v4 <vel> v6 <vel>` / `↓ v4 <vel> v6 <vel>`, com cores atuais e quatro células por linha alinhadas em pixels. Reserva pior caso por fonte; ativar/desativar ou perder/recuperar contadores redimensiona no lugar, sem reconstrução. Taskbar preserva gaps de 10 px; docked reserva a largura adicional e respeita o conteúdo; floating preserva posição.
+- Testes Win32/Tk isolam o pai em uma janela de teste, nunca a barra real: WindowFromPoint confirma hit no SysMonitor; verificam retângulos, ordem Z, re-embedding, perda da apanhadora, limpeza e alinhamento nos três modos. Conferência interativa pelo Mateus no Explorer/DPI real continua pendente; widget em execução não foi reiniciado.
 - Coordenadas do menu no modo taskbar vêm de `GetCursorPos`, não de Tk.
 - Eventos de menu usam bind do Toplevel, não `bind_all`, para sobreviver à reconstrução.
 
@@ -26,7 +28,7 @@ Atualizado em 2026-10-21 (branch main; automático mostra perda e preserva relay
 - `TaskbarEmbedder.embed()` muda WS_POPUP para WS_CHILD e chama SetParent.
 - Reaplica WS_EX_LAYERED depois do reparent e usa LWA_COLORKEY com `#010101`.
 - Posiciona com coordenadas relativas ao pai (y=0) e acompanha altura/largura da bandeja.
-- `_maintain_position()` verifica saúde do HWND, tenta re-embedding e solicita reconstrução se necessário.
+- `_maintain_position()` verifica ambos os HWNDs e seus pais, tenta re-embedding e solicita reconstrução se algum handle desaparecer. `reposition()` mantém posição, largura, altura e ordem Z do par, inclusive no relayout do ping/rede.
 - `main()` espera até 60 s pela barra no boot; ausência ou embedding falho leva a docked só na sessão.
 - Janela perdida é reconstruída após 2 s; cinco perdas consecutivas com duração <15 s levam a docked.
 - Docked recalcula posição a cada cinco ticks; topmost é reafirmado por tick em docked/floating.

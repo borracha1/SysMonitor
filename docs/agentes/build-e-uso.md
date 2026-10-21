@@ -1,4 +1,4 @@
-Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6; commit "perda de pacotes por grupo IPv4/IPv6")
+Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv6 estimado; sem commit)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -37,6 +37,7 @@ python3 create_shortcut.py
 - `load_config()` mescla `DEFAULTS` com `[window]` de `config.ini` em UTF-8; cria arquivo se faltar.
 - Defaults: taskbar; x/y=auto; opacity=0.95; always_on_top=true; font_size=8.
 - Cores: bg_color, fg_color, accent_up, accent_down; update_interval_ms=1000.
+- `[window] net_split=false` é o novo default, sem regravar arquivos existentes na carga. Menu `Separar IPv4/IPv6 (estimado)` persiste só esta chave pelo mesmo gravador seletivo/atômico do ping. Erro mantém preferência anterior e registra log; não grava defaults nem remove ping legado. Usa proporções de pacotes para estimar bytes por família, portanto não equivale a medição real de bytes IPv4/IPv6. GetIpStatisticsEx dispensa admin/driver; API indisponível mostra total original.
 - Docked: taskbar_width=220 e docked_height=36; taskbar calcula largura pela fonte.
 - Opacidade, fundo e topmost se aplicam a docked/floating; x/y somente a floating.
 - Arraste regrava configuração completa; entradas numéricas/booleanas não têm validação dedicada.
@@ -47,6 +48,7 @@ python3 create_shortcut.py
 - Compilação sintática: `py -3.12 -m py_compile` com todas as fontes `.py` da raiz (inclusive `ping_config.py`).
 - Suíte também cobre grupos por família/migração legada, troca/retorno/geração, persistência atômica, editor de quatro campos, marcadores, rádios e alinhamento/largura estável. Testes usam mocks/AST para não abrir o widget nem importar entradas Win32.
 - Não há CI, instalador, distribuição binária nem comando de build no Git.
+- Verificação 2026-10-21: 62 testes aprovados (2,878 s), incluindo regressão Win32 com WindowFromPoint em pai Tk isolado, coleta/divisão/persistência/falha e três modos em Tk real. `py_compile`: 16 fontes (raiz + testes), OK. Leitura real GetIpStatisticsEx IPv4/IPv6 aprovada sem elevação. Nenhum teste usa a barra real ou grava o config.ini local; pendente conferência manual do Mateus.
 - Diagnóstico existente: `python3 sensors.py`; as duas entradas devem ser verificadas manualmente em Windows.
 - Roteiro futuro: sensores com/sem LHM; GPU indisponível; três modos do widget; arraste/persistência; menu Fechar.
 - Verificar boot, instância repetida, Start aberto, DPI/monitor e recuperação após reiniciar Explorer.

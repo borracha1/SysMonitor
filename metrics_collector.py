@@ -18,6 +18,7 @@ class Metrics:
         self.lock = threading.Lock()
         self.up_speed = 0.0
         self.down_speed = 0.0
+        self.net_rates = None
         self.cpu_percent = 0.0
         self.mem_percent = 0.0
         self.cpu_temp = None
@@ -35,6 +36,7 @@ class Metrics:
             return dict(
                 up_speed=self.up_speed,
                 down_speed=self.down_speed,
+                net_rates=self.net_rates,
                 cpu_percent=self.cpu_percent,
                 mem_percent=self.mem_percent,
                 cpu_temp=self.cpu_temp,
