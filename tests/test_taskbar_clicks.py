@@ -8,6 +8,8 @@ import tkinter as tk
 import unittest
 from unittest.mock import Mock
 
+from taskbar_space import choose_layout
+
 
 def namespace() -> dict[str, Any]:
     tree = ast.parse(Path('sys_monitor.py').read_text(encoding='utf-8'))
@@ -17,7 +19,7 @@ def namespace() -> dict[str, Any]:
     nodes = tree.body[start:end+1]
     nodes += [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'MonitorWindow']
     ns = dict(ctypes=ctypes, wintypes=wintypes, tk=tk, _log_event=Mock(),
-              configparser=__import__('configparser'), Metrics=object)
+              choose_layout=choose_layout, configparser=__import__('configparser'), Metrics=object)
     exec(compile(ast.Module(body=nodes, type_ignores=[]), 'sys_monitor.py', 'exec'), ns)
     return ns
 

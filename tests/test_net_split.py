@@ -59,6 +59,47 @@ class SplitTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), before)
             self.assertEqual(list(Path(directory).iterdir()), [path])
 
+    def test_split_activation_relayout_reenters_and_disables_cells(self):
+        ns = namespace()
+        load_definitions('sys_monitor.py', {'fmt_speed'}, ns)
+        cells = []
+        def make_cell(*args, **kwargs):
+            cell = Mock()
+            cells.append(cell)
+            return cell
+        ns['tk'] = Mock()
+        ns['tk'].Label.side_effect = make_cell
+        window = ns['MonitorWindow'].__new__(ns['MonitorWindow'])
+        window.mode = 'taskbar'
+        window.net_split = True
+        window._space_level = 0
+        window._net_active = False
+        window._net_cells = []
+        window._net_font = Mock()
+        window._net_font.measure.side_effect = len
+        window.cfg = {'accent_up': 'green', 'accent_down': 'blue'}
+        window.lbl_up, window.lbl_down = Mock(), Mock()
+        window._ping_layout_family = 'ipv4'
+        metrics = {'net_rates': ((100, 200), (300, 400))}
+        def relayout(family):
+            if window._space_level == 0:
+                self.assertEqual(len(window._net_cells), 8)
+                window._space_level = 1
+                window._update_net_split(metrics)
+        window._relayout_ping = Mock(side_effect=relayout)
+
+        window._update_net_split(metrics)
+
+        self.assertEqual(window._relayout_ping.call_count, 2)
+        self.assertFalse(window._net_active)
+        self.assertEqual(window._net_cells, [])
+        self.assertTrue(window.net_split)
+        self.assertEqual(len(cells), 8)
+        for cell in cells:
+            cell.destroy.assert_called_once()
+            cell.config.assert_not_called()
+            cell.place.assert_not_called()
+
     def test_real_tk_split_alignment_relayout_and_fallback_all_modes(self):
         tree = ast.parse(Path('sys_monitor.py').read_text(encoding='utf-8'))
         defaults = ast.literal_eval(next(n.value for n in tree.body if isinstance(n, ast.Assign)

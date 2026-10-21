@@ -154,6 +154,9 @@ class LifecycleTests(unittest.TestCase):
             'ensure_single_instance': Mock(), 'load_config': lambda: cfg,
             '_enable_dpi_awareness': Mock(), 'Metrics': Metrics, 'Collector': Mock(),
             'PingMonitor': Mock(), 'tk': Mock(), 'MonitorWindow': factory,
+            'TaskbarSpaceMonitor': Mock(),
+            'TaskbarSession': Mock(return_value=Mock(exit_requested=False)),
+            'enumerate_secondary_taskbars': Mock(return_value=[]), 'find_taskbar': Mock(return_value=(1, 2)),
             'wait_for_taskbar': Mock(return_value=True), 'time': clock, '_log_event': logs})
         ns['main']()
         self.assertEqual(factory.call_count, 7)

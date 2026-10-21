@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; automático mostra grupo com perda; commit "perda de pacotes por grupo IPv4/IPv6")
+Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; sem commit)
 
 # Sensores e coleta
 ## Contrato (`sensors.py`)
@@ -46,6 +46,11 @@ Atualizado em 2026-10-21 (branch main; automático mostra grupo com perda; commi
 - `fmt_loss`, `fmt_ping_line` e `ping_has_problem` são helpers sem Tkinter. Exemplo: `8.8.8.8 0% 14ms`; sem dados: `8.8.8.8 --`; última falha: `8.8.8.8 25% --ms`.
 - Todos os modos mostram duas linhas do grupo ativo com marcador separado e largura medida pelo pior IP do grupo ativo e relayout ao mudar de família; segunda linha vazia se não houver segundo IP. Cor vermelha individual e alinhamento em pixels preservados na troca sem reconstruir.
 - Tooltip de rede da bandeja mostra marcador e grupo ativo, depois inativo, limitado a 127 caracteres. Inativo é cortado primeiro; resumo de velocidade cede espaço ao ativo se necessário.
+
+## Controle de excesso de toasts por IP
+- `PingMonitor` mantém deques de assuntos de perda e último instante de resposta falha por IP, sob seu RLock e usando o mesmo now monotônico do ciclo. Defaults: mute_after_alerts=5, mute_window_s=120, unmute_after_s=1800; 0 alertas desliga. O 5º assunto na janela silencia antes do envio, com log + um toast informativo; assuntos omitidos continuam contando.
+- Perda por troca tem como assunto apenas os IPs que falharam; perda global tem todos os alvos. Só omite a perda se todos os IPs do assunto estão silenciados; retorno de família é omitido se algum IP da família anterior está silenciado. _alert_notified só é True quando a perda global realmente foi enviada, preservando a regra da recuperação. Logs e seleção de família seguem intactos.
+- Toda falha observada, mesmo sem toast ou no grupo não exibido, renova a espera por IP. No primeiro ciclo bem-sucedido com 1800 s desde sua última falha, reativa com log (sem toast informativo), limpa histórico de alertas e mantém outros IPs independentes. set_groups limpa tudo; set_mode preserva. Nenhuma persistência ou coleta adicional.
 
 ## Troca de destinos em tempo real
 - `parse_ping_groups(values, preferred)` valida quatro campos por posição/família usando `ipaddress`: remove espaços/vazios, canonicaliza, rejeita duplicados/zonas, exige pelo menos um IP e preferido não vazio; mensagens identificam campo e família. `ping_settings(section)` faz leitura tolerante e migração legada, sem DNS e sem gravar. Widget resolve migração antes de preencher DEFAULTS para não mascarar `targets` antiga.

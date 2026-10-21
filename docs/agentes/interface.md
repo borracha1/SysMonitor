@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv6 estimado; sem commit)
+Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; sem commit)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -23,6 +23,12 @@ Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv
 - Coordenadas do menu no modo taskbar vêm de `GetCursorPos`, não de Tk.
 - Eventos de menu usam bind do Toplevel, não `bind_all`, para sobreviver à reconstrução.
 
+## Silêncio automático de notificações de ping
+- Com notify=true, cada IP acumula assuntos de toasts de perda em janela móvel: no 5º alerta em até 120 s (inclui exatamente 120 s), fica silenciado antes de emitir o toast de perda. Mesmo avisos omitidos continuam contando. Um toast de perda só some se TODOS os IPs do assunto estão silenciados; se algum não está, sai com o assunto original completo.
+- Ao silenciar há log e um único toast informativo por IP (`Alertas silenciados`), sem repetir enquanto continuar silenciado. `Ping: de volta ao X` é omitido se qualquer IP da família anterior está silenciado. `Conexão restabelecida` continua dependente de _alert_notified: se a perda global foi omitida, não há recuperação avulsa.
+- Cada resposta falha, em qualquer grupo (inclusive o não exibido), reinicia a espera daquele IP. Reativa após 1800 s sem falha, observados no próximo ciclo bem-sucedido, zerando seu histórico de alertas e registrando só log da reativação. Coleta, perda exibida, trocas de família e logs anteriores não são alterados.
+- Estado só na memória do PingMonitor compartilhado: todas as barras usam o mesmo silêncio, sem novos controles/menu; set_groups e reinício do programa limpam o estado, set_mode preserva. notify=false não emite toasts nem acumula assuntos; mute_after_alerts=0 desliga o recurso.
+
 ## Embedding e recuperação
 - DPI awareness é habilitado antes de criar qualquer janela no modo taskbar.
 - `TaskbarEmbedder.embed()` muda WS_POPUP para WS_CHILD e chama SetParent.
@@ -31,8 +37,20 @@ Atualizado em 2026-10-21 (branch main; menu em todo o widget e tráfego IPv4/IPv
 - `_maintain_position()` verifica ambos os HWNDs e seus pais, tenta re-embedding e solicita reconstrução se algum handle desaparecer. `reposition()` mantém posição, largura, altura e ordem Z do par, inclusive no relayout do ping/rede.
 - `main()` espera até 60 s pela barra no boot; ausência ou embedding falho leva a docked só na sessão.
 - Janela perdida é reconstruída após 2 s; cinco perdas consecutivas com duração <15 s levam a docked.
+- Espaço taskbar: UIA amostra a barra pelo HWND em thread própria (~2 s). Regiões de tela: direita = último botão/Start.right + 10 até bandeja; esquerda = último elemento antes do Start + 10 (ou borda + 10) até Start.left - 10. Ignora Tk/processo próprio, retângulos vazios/não finitos e elementos fora da barra.
+- Política pura em `taskbar_space.choose_layout`: direita nível 0 (completo), 1 (totais sem split), 2 (sem split/MEM); depois esquerda 0/1/2, alinhada no início. Nada cabe: direita nível 2 junto da bandeja, com log único por situação. Sem snapshot válido: comportamento original, direita nível 0. Preferência net_split nunca é alterada automaticamente.
+- Níveis usam larguras medidas pela fonte atual e grupo de ping ativo. Mudança aplica colunas/largura/posição sem reconstruir ou re-embutir; MEM é ocultada/restaurada e células split destruídas/recriadas conforme exibição. Texto e apanhadora continuam com retângulos idênticos. Sem mudança não refaz layout. Snapshot de outro HWND/geometria ou com idade ≥6 s é ignorado.
+- Docked/floating não participam da política de espaço e mantêm seu comportamento.
 - Docked recalcula posição a cada cinco ticks; topmost é reafirmado por tick em docked/floating.
 - Destruição cancela after, quebra referências embedder/font e encerra mainloop sem destruir a raiz.
+
+## Múltiplas barras (somente display_mode=taskbar)
+- `TaskbarSession` dura toda a sessão da raiz oculta e enumera todas as `Shell_SecondaryTrayWnd` por `after` (~2 s). Cria um `MonitorWindow` e apanhadora alpha=1 por HWND, com o mesmo Metrics/PingMonitor, conteúdo e menu; nenhuma coleta adicional. Cada barra escolhe seu próprio lado/nível pela política da tarefa A.
+- Principal continua com fallback original sem snapshot. Secundária NÃO aparece sem snapshot válido daquele HWND/geometria: o gerente não a cria e remove instâncias sem dados; o embedder também oculta texto/apanhadora se o snapshot expirar entre polls. Sem TrayNotifyWnd, limite direito vem de `snapshot.right[1]` (menor left de SystemTray.*), inclusive no fallback de falta de espaço.
+- Remove barras que somem, recria para novos HWNDs e tenta novamente após falha local. Destruição/erro de secundária não chama master.quit, não reconstrói o principal nem altera quick_losses/fallback. Reconstrução simples do principal preserva as secundárias sem duplicação; edição de grupos invalida/reconstrói todas.
+- Split e modo do ping são globais: uma ação salva uma vez, aplica ao monitor compartilhado e sincroniza variáveis dos menus/exibição de todos os widgets. Compactação por espaço não muda a preferência global. `Configurar destinos…` tem um único editor no processo, mesmo quando aberto por outra barra; reabrir traz o existente à frente. `Fechar` em qualquer barra cancela o gerente e encerra todos os widgets/programa.
+- Espera pela barra e intervalo de recuperação do principal processam eventos Tk por timer, mantendo menus e secundárias ativos; nenhuma espera por UIA. Docked/floating não criam gerente nem widgets secundários.
+- Testes reais de embedding/conteúdo/menu usam janelas-pai isoladas (não Explorer). Pendente teste visual do Mateus com duas telas e depois somente a segunda.
 
 ## Bandeja (`tray_monitor.py`)
 - Três ícones reais: rede ↑/↓; uso/temperatura CPU; uso/temperatura GPU.

@@ -44,6 +44,8 @@ from ping_monitor import (PingMonitor, ping_settings, parse_ping_groups, fmt_pin
                           ping_has_problem, ping_marker, ping_column_width, initial_ping_family)
 from ping_config import save_ping_settings, save_window_settings
 from net_split import PacketCounters, split_rates, net_column_width
+from taskbar_space import TaskbarSpaceMonitor, choose_layout
+from taskbar_session import TaskbarSession
 
 APP_NAME = "SysMonitor"
 CONFIG_PATH = Path(__file__).with_name("config.ini")
@@ -173,6 +175,9 @@ DEFAULTS = {
         "notify": "true",       # Windows toast on loss / recovery
         "alert_after": "1",     # consecutive lost cycles before alerting
         "cooldown_s": "60",     # min seconds between loss toasts
+        "mute_after_alerts": "5",  # 0 disables per-IP unstable notification muting
+        "mute_window_s": "120",
+        "unmute_after_s": "1800",
     },
 }
 
@@ -333,6 +338,10 @@ _u32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes
                               ctypes.c_int, ctypes.c_int, wintypes.UINT]
 _u32.GetCursorPos.restype = wintypes.BOOL
 _u32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+_u32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+_u32.ShowWindow.restype = wintypes.BOOL
+_u32.IsWindowVisible.argtypes = [wintypes.HWND]
+_u32.IsWindowVisible.restype = wintypes.BOOL
 
 GWL_STYLE = -16
 GWL_EXSTYLE = -20
@@ -382,17 +391,34 @@ def find_taskbar():
     return tray, _u32.FindWindowExW(tray, None, "TrayNotifyWnd", None)
 
 
-def wait_for_taskbar(timeout_s: float) -> bool:
+def wait_for_taskbar(timeout_s: float, wait=None, should_stop=None) -> bool:
     """At logon (or right after an Explorer restart) the taskbar may not
     exist yet; wait for it instead of falling back immediately."""
     deadline = time.monotonic() + timeout_s
     while True:
+        if should_stop is not None and should_stop():
+            return False
         tray, notify = find_taskbar()
         if tray and notify:
             return True
         if time.monotonic() >= deadline:
             return False
-        time.sleep(1)
+        if wait is not None:
+            wait()
+        else:
+            time.sleep(1)
+
+
+def enumerate_secondary_taskbars():
+    """Enumerate top-level secondary bars, without assuming monitor count/order."""
+    result = []
+    previous = None
+    while True:
+        hwnd = _u32.FindWindowExW(None, previous, 'Shell_SecondaryTrayWnd', None)
+        if not hwnd:
+            return result
+        result.append(hwnd)
+        previous = hwnd
 
 
 class TaskbarEmbedder:
@@ -400,16 +426,27 @@ class TaskbarEmbedder:
     of TrayNotifyWnd, and re-docks it when the tray width / taskbar height
     changes or Explorer is restarted."""
 
-    def __init__(self, hwnd: int, width: int, on_height_change=None, catcher_hwnd=None):
+    def __init__(self, hwnd: int, width: int, on_height_change=None, catcher_hwnd=None,
+                 target_tray=None, managed_targets=False):
+        self.target_tray = target_tray
+        self.managed_targets = managed_targets
+        self._hidden = False
         self.catcher_hwnd = catcher_hwnd
         self.hwnd = hwnd
         self.width = width
         self.on_height_change = on_height_change
         self.tray = None
         self._height = None
+        self.space_monitor = None
+        self.widths = None
+        self.width_provider = None
+        self.on_layout_change = None
+        self._layout_key = None
+        self._overflow_situations = set()
+        self._positioning = False
 
     def embed(self) -> bool:
-        tray, _ = find_taskbar()
+        tray = self.target_tray if self.target_tray is not None else find_taskbar()[0]
         if not tray:
             return False
         if self.catcher_hwnd and not self._embed_catcher(tray):
@@ -453,12 +490,29 @@ class TaskbarEmbedder:
     def healthy(self) -> bool:
         if not self.tray or not _u32.IsWindow(self.hwnd):
             return False
-        tray, _ = find_taskbar()
-        return (tray == self.tray and _u32.GetParent(self.hwnd) == self.tray
+        tray = self.target_tray if self.target_tray is not None else find_taskbar()[0]
+        return (tray == self.tray and _u32.IsWindow(tray) and _u32.GetParent(self.hwnd) == self.tray
                 and (not self.catcher_hwnd or (_u32.IsWindow(self.catcher_hwnd)
                      and _u32.GetParent(self.catcher_hwnd) == self.tray)))
 
+    def _set_visible(self, visible):
+        if self._hidden == (not visible):
+            return
+        self._hidden = not visible
+        for hwnd in (self.hwnd, self.catcher_hwnd):
+            if hwnd:
+                _u32.ShowWindow(hwnd, 4 if visible else 0)  # SW_SHOWNOACTIVATE / SW_HIDE
+
     def reposition(self):
+        if self._positioning:
+            return
+        self._positioning = True
+        try:
+            self._reposition()
+        finally:
+            self._positioning = False
+
+    def _reposition(self):
         tray = self.tray
         tr = _win_rect(tray)
         if tr is None:
@@ -467,6 +521,40 @@ class TaskbarEmbedder:
         right = nr.left if (nr and nr.right > nr.left) else tr.right
         height = tr.bottom - tr.top
         x = right - tr.left - self.width  # relative to the taskbar
+        snapshot = None
+        if self.space_monitor is not None:
+            if self.managed_targets:
+                snapshot = self.space_monitor.snapshot(tray)
+            else:
+                self.space_monitor.set_target(tray)
+                snapshot = self.space_monitor.snapshot()
+            bounds = (tr.left, tr.top, tr.right, tr.bottom)
+            if snapshot is not None and (snapshot.hwnd != tray or snapshot.bounds != bounds):
+                snapshot = None
+            if self.target_tray is not None and snapshot is None:
+                self._set_visible(False)
+                return
+            if self.target_tray is not None:
+                right = snapshot.right[1]  # No TrayNotifyWnd on secondary bars.
+            widths = self.width_provider() if self.width_provider else self.widths
+            if widths is not None:
+                layout = choose_layout(snapshot, widths, right)
+                key = (layout.side, layout.level)
+                self.width = layout.width
+                x = layout.x - tr.left
+                if key != self._layout_key:
+                    self._layout_key = key
+                    if self.on_layout_change:
+                        self.on_layout_change(layout.level)
+                if layout.overflow and snapshot is not None:
+                    situation = (tray, bounds, snapshot.left, snapshot.right, widths)
+                    if situation not in self._overflow_situations:
+                        self._overflow_situations.add(situation)
+                        _log_event(f'taskbar: no layout fits; using right level 2: {situation}')
+        if self.target_tray is not None and snapshot is None:
+            self._set_visible(False)
+            return
+        self._set_visible(True)
         if height != self._height:
             self._height = height
             if self.on_height_change:
@@ -593,7 +681,12 @@ class MonitorWindow:
     handler deleted by the wrong thread", exit 3). Reproduced in isolation;
     a single long-lived Tk + per-window Toplevel does not crash."""
 
-    def __init__(self, master: tk.Tk, cfg: configparser.ConfigParser, metrics: Metrics, mode: str, ping_monitor=None):
+    def __init__(self, master: tk.Tk, cfg: configparser.ConfigParser, metrics: Metrics, mode: str, ping_monitor=None,
+                 space_monitor=None, taskbar_hwnd=None, session=None):
+        self.session = session
+        self.taskbar_hwnd = taskbar_hwnd
+        self.space_monitor = space_monitor
+        self._space_level = 0
         self.master = master
         self.ping_monitor = ping_monitor
         self.reconfigure_requested = False
@@ -632,10 +725,15 @@ class MonitorWindow:
         self.net_split = self.cfg.getboolean("net_split", fallback=False)
         self._net_active = False
         self._net_cells = []
-        self._build_ui()
-        self._place_window()
-        self._bind_drag()
-        self._bind_menu()
+        try:
+            self._build_ui()
+            self._place_window()
+            self._bind_drag()
+            self._bind_menu()
+        except Exception:
+            if self.taskbar_hwnd is not None:
+                self._destroy()
+            raise
 
         self._after_id = self.root.after(200, self._tick)
 
@@ -736,10 +834,11 @@ class MonitorWindow:
         self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
         self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
 
-    def _calculate_embedded_columns(self):
+    def _embedded_columns(self, level):
         measure = self.font.measure
         pad, gap = 4, 10
-        w_net = net_column_width(measure, getattr(self, "_net_active", False))
+        split = getattr(self, '_net_available', getattr(self, '_net_active', False)) and level == 0
+        w_net = net_column_width(measure, split)
         w_ping = ping_column_width(
             measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms
         ) if self.ping_enabled else 0
@@ -748,15 +847,32 @@ class MonitorWindow:
         w_mem = measure("MEM 100%")
         w_st = measure("⚠") + 2
         x_hw = pad + w_net + gap + w_ping + (gap if self.ping_enabled else 0)
-        self._cols = {
+        cols = {
             "net": (pad, w_net),
             "ping": (pad + w_net + gap, w_ping),
             "hw": (x_hw, w_hw),
             "mem": (x_hw + w_hw + gap, w_mem),
         }
-        x_st = self._cols["mem"][0] + w_mem + 2
-        self._cols["st"] = (x_st, w_st)
-        self.embed_width = x_st + w_st + pad
+        x_st = cols["mem"][0] + w_mem + 2 if level < 2 else x_hw + w_hw + 2
+        cols["st"] = (x_st, w_st)
+        return cols, x_st + w_st + pad
+
+    def _calculate_embedded_columns(self):
+        self._cols, self.embed_width = self._embedded_columns(getattr(self, '_space_level', 0))
+
+    def _taskbar_widths(self):
+        return tuple(self._embedded_columns(level)[1] for level in range(3))
+
+    def _apply_space_level(self, level):
+        if level == self._space_level:
+            return
+        self._space_level = level
+        # Use the metrics already measured/rendered this tick. A second collector
+        # snapshot here could change ping family after widths were chosen.
+        if hasattr(self, '_last_metrics'):
+            self._update_labels(self._last_metrics)
+        self._calculate_embedded_columns()
+        self._layout_embedded(self.root.winfo_height())
 
     def _relayout_ping(self, family):
         """Resize existing controls on the Tk thread, never rebuild/re-embed."""
@@ -794,6 +910,9 @@ class MonitorWindow:
             (self.lbl_mem, "mem", ym), (self.lbl_status, "st", ym),
         )
         for lbl, col, y in placements:
+            if col == 'mem' and getattr(self, '_space_level', 0) == 2:
+                lbl.place_forget()
+                continue
             x, w = self._cols[col]
             if col == "ping":
                 x += self._ping_marker_width
@@ -823,7 +942,8 @@ class MonitorWindow:
             self.root.geometry(f"{w}x{h}+{x}+{y}")
 
     def _embed_in_taskbar(self):
-        tray, _ = find_taskbar()
+        target = getattr(self, 'taskbar_hwnd', None)
+        tray = target if target is not None else find_taskbar()[0]
         tr = _win_rect(tray)
         if tr is None:
             self.embed_failed = True
@@ -849,7 +969,11 @@ class MonitorWindow:
             return
         self.embedder = TaskbarEmbedder(wrapper, self.embed_width,
                                        on_height_change=self._layout_embedded,
-                                       catcher_hwnd=catcher_hwnd)
+                                       catcher_hwnd=catcher_hwnd, target_tray=target,
+                                       managed_targets=getattr(self, 'session', None) is not None)
+        self.embedder.space_monitor = getattr(self, 'space_monitor', None)
+        self.embedder.width_provider = self._taskbar_widths
+        self.embedder.on_layout_change = self._apply_space_level
         if not self.embedder.embed():
             self.embed_failed = True
 
@@ -949,10 +1073,14 @@ class MonitorWindow:
             return
         self.cfg["net_split"] = str(selected).lower()
         self.net_split = selected
-        self._update_labels()
+        if getattr(self, 'session', None) is not None:
+            self.session.sync_settings()
+        else:
+            self._update_labels()
 
     def _update_net_split(self, metrics):
-        active = bool(getattr(self, "net_split", False) and metrics.get("net_rates") is not None)
+        self._net_available = bool(getattr(self, "net_split", False) and metrics.get("net_rates") is not None)
+        active = self._net_available and (self.mode != 'taskbar' or getattr(self, '_space_level', 0) == 0)
         changed = active != getattr(self, "_net_active", False)
         self._net_active = active
         if not active and not changed:
@@ -981,6 +1109,9 @@ class MonitorWindow:
                 self.root.update_idletasks()
                 self.root.geometry(f"{max(150, self.root.winfo_reqwidth())}x"
                                    f"{max(130, self.root.winfo_reqheight())}")
+        # Relayout can reenter this method and replace/destroy the cells.
+        if active != self._net_active:
+            return
         if active:
             widths = (max(measure("↑ v4 "), measure("↓ v4 ")),
                       measure("1000.0 Mbps"), measure(" v6 "), measure("1000.0 Mbps"))
@@ -1013,10 +1144,15 @@ class MonitorWindow:
         self.full_cfg["ping"].update(settings)
         self.ping_monitor.set_mode(mode)
         self._ping_mode_var.set(mode)
-        self._update_labels()
+        if getattr(self, 'session', None) is not None:
+            self.session.sync_settings()
+        else:
+            self._update_labels()
         _log_event(f"ping: mode changed to {mode}")
 
     def _close_ping_editor(self):
+        if getattr(self, 'session', None) is not None:
+            self.session.release_editor(self)
         editor, self._ping_editor = self._ping_editor, None
         if editor is not None:
             try:
@@ -1041,11 +1177,16 @@ class MonitorWindow:
         self.full_cfg["ping"].update(settings)
         self.ping_monitor.set_groups(v4, v6, preferred)
         _log_event(f"ping: groups changed: IPv4={','.join(v4)} IPv6={','.join(v6)} preferred={preferred}")
-        self.reconfigure_requested = True
-        self._destroy()
+        if getattr(self, 'session', None) is not None:
+            self.session.reconfigure()
+        else:
+            self.reconfigure_requested = True
+            self._destroy()
 
     def _edit_ping_targets(self):
         if self._closing or self.ping_monitor is None:
+            return
+        if getattr(self, 'session', None) is not None and not self.session.claim_editor(self):
             return
         if self._ping_editor is not None and self._ping_editor.winfo_exists():
             self._ping_editor.lift()
@@ -1097,6 +1238,9 @@ class MonitorWindow:
 
     # -- lifecycle --------------------------------------------------------
     def quit(self):
+        if getattr(self, 'session', None) is not None:
+            self.session.quit()
+            return
         self.exit_requested = True
         self._destroy()
 
@@ -1137,8 +1281,9 @@ class MonitorWindow:
             del self._net_mode_var
         if hasattr(self, "_ping_mode_var"):
             del self._ping_mode_var
-        # The hidden process-wide root keeps mainloop alive; leave it.
-        self.master.quit()
+        # Secondary disposal must never interrupt the primary mainloop.
+        if getattr(self, 'taskbar_hwnd', None) is None:
+            self.master.quit()
 
     # -- update loop ------------------------------------------------------
     def _tick(self):
@@ -1147,12 +1292,17 @@ class MonitorWindow:
         try:
             self._update_labels()
             self._maintain_position()
+        except Exception as exc:
+            if getattr(self, 'taskbar_hwnd', None) is None:
+                raise
+            self._request_rebuild(f'secondary update failed: {exc}')
         finally:
             if not self._closing:
                 self._after_id = self.root.after(int(self.cfg["update_interval_ms"]), self._tick)
 
-    def _update_labels(self):
-        m = self.metrics.snapshot()
+    def _update_labels(self, metrics=None):
+        m = self.metrics.snapshot() if metrics is None else metrics
+        self._last_metrics = m
         cpu_t = fmt_temp(m["cpu_temp"])
         gpu_t = fmt_temp(m["gpu_temp"])
         gpu_u = f"{m['gpu_usage']:.0f}" if m["gpu_usage"] is not None else "--"
@@ -1199,6 +1349,9 @@ class MonitorWindow:
                     (emb.catcher_hwnd and not _u32.IsWindow(emb.catcher_hwnd))):
                 self._request_rebuild("window handle gone")
                 return
+            if getattr(self, 'taskbar_hwnd', None) is not None:
+                self._request_rebuild('secondary embedding lost')
+                return
             tray, notify = find_taskbar()
             if tray and notify and not emb.embed():  # Explorer restarted: re-embed
                 self._request_rebuild("re-embed failed")
@@ -1244,16 +1397,37 @@ def main():
     app_root.withdraw()
     app_root.report_callback_exception = MonitorWindow._log_tk_callback_exception
 
+    space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
+    if space_monitor is not None:
+        space_monitor.start()
+    session = None
+    if mode == 'taskbar':
+        session = TaskbarSession(app_root, cfg, metrics, ping, space_monitor, MonitorWindow,
+                                 enumerate_secondary_taskbars, lambda: find_taskbar()[0], _log_event)
+        session.start()
     quick_losses = 0
     window = None
     try:
         while True:
-            if mode == "taskbar" and not wait_for_taskbar(timeout_s=60):
+            if session is not None and session.exit_requested:
+                break
+            if mode == "taskbar" and not wait_for_taskbar(
+                    timeout_s=60, wait=(lambda: session.wait(1000)) if session is not None else None,
+                    should_stop=lambda: session is not None and session.exit_requested):
+                if session is not None and session.exit_requested:
+                    break
                 _log_event("taskbar not found after 60s; falling back to docked mode")
                 mode = "docked"
+            if mode != 'taskbar' and session is not None:
+                session.close()
+                session = None
             started = time.monotonic()
             window = None
-            window = MonitorWindow(app_root, cfg, metrics, mode, ping_monitor=ping)
+            window = MonitorWindow(app_root, cfg, metrics, mode, ping_monitor=ping,
+                                   space_monitor=space_monitor if mode == 'taskbar' else None,
+                                   session=session)
+            if session is not None:
+                session.attach_primary(window)
             if window.embed_failed:
                 _log_event("embedding failed; falling back to docked mode for this session")
                 window._destroy()
@@ -1272,8 +1446,15 @@ def main():
             if quick_losses >= 5 and mode == "taskbar":
                 _log_event("window lost 5x in a row quickly; falling back to docked mode")
                 mode = "docked"
-            time.sleep(2)
+            if session is not None:
+                session.wait(2000)
+            else:
+                time.sleep(2)
     finally:
+        if session is not None:
+            session.close()
+        if space_monitor is not None:
+            space_monitor.stop()  # Never join a potentially blocked UIA provider from Tk.
         collector.stop()
         if ping:
             ping.stop()
