@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; sem commit)
+Atualizado em 2026-10-25 (branch main; limites de temperatura e cores; sem commit)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -43,6 +43,15 @@ python3 create_shortcut.py
 - Opacidade, fundo e topmost se aplicam a docked/floating; x/y somente a floating.
 - Arraste regrava configuração completa; entradas numéricas/booleanas não têm validação dedicada.
 - Valores atuais do arquivo local não foram reproduzidos nem alterados nesta tarefa.
+
+## Limites de uso, temperatura e cores em [usage_limits]
+- Uso: `cpu_low`, `cpu_warning`, `cpu_high`, `gpu_low`, `gpu_warning`, `gpu_high`, `mem_low`, `mem_warning`, `mem_high`. Defaults 50/75/90 por métrica; regra `0 ≤ Low < Warning < High ≤ 100`.
+- Temperatura: `cpu_temp_low`, `cpu_temp_warning`, `cpu_temp_high`, `gpu_temp_low`, `gpu_temp_warning`, `gpu_temp_high`. Defaults 60/75/85 °C por linha; regra `0 ≤ Low < Warning < High ≤ 120`. MEM não tem temperatura.
+- Cores globais: `low_color=#5fb0ff`, `warning_color=#ff9d5f`, `high_color=#ff6b6b`. Formato estrito `#rrggbb`, aceita letras maiúsculas; nomes e forma curta são inválidos. Mesmas cores para todas as métricas e temperaturas. Prevalece o maior limite atingido; abaixo de Low ou leitura ausente, cor normal.
+- Números finitos, decimais com ponto. Carga inválida volta ao default somente da linha/cor correspondente, sem reescrever o arquivo. `load_limits` preserva o contrato antigo de uso; `load_preferences` inclui temperaturas e cores.
+- Editor valida quinze campos e três cores; grava seletivamente via `ping_config.save_settings`: temporário no mesmo diretório, flush/fsync e os.replace, preservando outras seções e chaves. API `save_limits` também aceita só as linhas desejadas. Publicação somente após persistência bem-sucedida. Cancelar, erro ou Restaurar cores padrão não gravam/aplicam nada antes de Salvar.
+- Widget mostra uso e temperatura com cores independentes nos três modos, sem ampliar a coluna embutida; bandeja colore ambas as linhas CPU/GPU, fallback MEM mantém segunda linha branca. Sem pacotes/driver/elevação novos.
+- Verificação 2026-10-25 no PowerShell sem TMPDIR: 114 testes em 10,995 s, OK (também 114 em 9,831 s pelo bash); seis casos novos focados em 2,800 s, OK; `py_compile` de 25 fontes, OK. Captura Tk real isolada com PowerShell/System.Drawing. Configuração local preservada por SHA-256. Pendente conferência do Mateus após reinício manual autorizado.
 
 ## Opções de silêncio em [ping]
 - `mute_after_alerts=5`: quantidade de assuntos de toasts de PERDA por IP para silenciar. `0` desliga o recurso.

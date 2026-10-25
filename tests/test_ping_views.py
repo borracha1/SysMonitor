@@ -1,5 +1,6 @@
 """Exercise view logic without importing the Windows entry points or opening Tk."""
 import ast
+import configparser
 from pathlib import Path
 from types import SimpleNamespace
 import threading
@@ -7,6 +8,7 @@ import unittest
 
 from metrics_collector import Metrics
 from net_split import net_column_width
+from usage_limits import load_limits, load_preferences, usage_color, DEFAULT_LIMITS
 from ping_monitor import fmt_ping_line, ping_has_problem, ping_marker, ping_column_width
 
 
@@ -30,9 +32,11 @@ class PingViewTests(unittest.TestCase):
     def widget_namespace(self):
         return load_definitions('sys_monitor.py', {'Metrics', 'MonitorWindow', 'fmt_temp', 'fmt_speed'},
                                 {'threading': threading, 'tk': SimpleNamespace(Tk=object),
-                                 'configparser': SimpleNamespace(ConfigParser=object),
+                                 'configparser': configparser,
                                  'fmt_ping_line': fmt_ping_line, 'ping_has_problem': ping_has_problem,
                                  'net_column_width': net_column_width,
+                                 'load_limits': load_limits, 'load_preferences': load_preferences, 'usage_color': usage_color,
+                                 'DEFAULT_LIMITS': DEFAULT_LIMITS,
                                  'PING_LOSS_COLOR': 'red', 'ping_marker': ping_marker, 'ping_column_width': ping_column_width})
 
     def test_both_metrics_contracts(self):

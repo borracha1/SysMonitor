@@ -216,10 +216,9 @@ def make_text_icon(lines, w, h, color=0x00FFFFFF):
     font = gdi32.CreateFontW(-line_h, 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0, "Segoe UI")
     old_font = gdi32.SelectObject(hdc, font)
     gdi32.SetBkMode(hdc, 1)  # TRANSPARENT
-    gdi32.SetTextColor(hdc, color)
-
     DT_CENTER, DT_VCENTER, DT_SINGLELINE, DT_NOCLIP = 1, 4, 32, 256
     for i, text in enumerate(lines):
+        gdi32.SetTextColor(hdc, color[i] if isinstance(color, (tuple, list)) else color)
         rect = wintypes.RECT(0, i * line_h, w, (i + 1) * line_h)
         user32.DrawTextW(hdc, text, -1, ctypes.byref(rect), DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOCLIP)
 
@@ -268,6 +267,7 @@ TPM_LEFTALIGN = 0x0000
 TPM_RETURNCMD = 0x0100
 MF_STRING = 0x0000
 IDM_EXIT = 1001
+IDM_LIMITS = 1002
 
 user32.CreatePopupMenu.restype = wintypes.HMENU
 user32.AppendMenuW.argtypes = [wintypes.HMENU, wintypes.UINT, ctypes.c_uint, wintypes.LPCWSTR]
@@ -279,18 +279,20 @@ user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
 user32.DestroyMenu.argtypes = [wintypes.HMENU]
 
 
-def show_exit_menu(hwnd):
-    """Right-click context menu, mirroring sys_monitor.py's single
-    'Fechar' item — left-click intentionally does nothing (an accidental
-    left-click must never silently kill the monitor)."""
+def show_exit_menu(hwnd, on_configure=None):
+    """Return True only for explicit exit; configuration never exits."""
     pt = wintypes.POINT()
     user32.GetCursorPos(ctypes.byref(pt))
     menu = user32.CreatePopupMenu()
+    if on_configure is not None:
+        user32.AppendMenuW(menu, MF_STRING, IDM_LIMITS, "Configurar limites de uso…")
     user32.AppendMenuW(menu, MF_STRING, IDM_EXIT, "Fechar")
     # Required so the menu dismisses itself on an outside click (MSDN TrackPopupMenu note).
     user32.SetForegroundWindow(hwnd)
     cmd = user32.TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_RETURNCMD, pt.x, pt.y, 0, hwnd, None)
     user32.DestroyMenu(menu)
+    if cmd == IDM_LIMITS and on_configure is not None:
+        on_configure()
     return cmd == IDM_EXIT
 
 
@@ -298,9 +300,10 @@ class TrayIconSlot:
     """One Shell_NotifyIcon slot: owns its NOTIFYICONDATA and current HICON,
     and knows how to refresh its bitmap+tooltip from a render callback."""
 
-    def __init__(self, hwnd, uid, render_fn):
+    def __init__(self, hwnd, uid, render_fn, color_fn=None):
         self.uid = uid
         self.render_fn = render_fn
+        self.color_fn = color_fn
         self._current_icon = None
         self.nid = NOTIFYICONDATA()
         self.nid.cbSize = ctypes.sizeof(NOTIFYICONDATA)
@@ -311,14 +314,16 @@ class TrayIconSlot:
 
     def add(self, icon_w, icon_h, m):
         lines, tooltip = self.render_fn(m)
-        self._current_icon = make_text_icon(lines, icon_w, icon_h)
+        self._current_icon = make_text_icon(lines, icon_w, icon_h,
+                                          color=self.color_fn(m) if self.color_fn else 0x00ffffff)
         self.nid.hIcon = self._current_icon
         self.nid.szTip = tooltip[:127]
         shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self.nid))
 
     def update(self, icon_w, icon_h, m):
         lines, tooltip = self.render_fn(m)
-        new_icon = make_text_icon(lines, icon_w, icon_h)
+        new_icon = make_text_icon(lines, icon_w, icon_h,
+                                          color=self.color_fn(m) if self.color_fn else 0x00ffffff)
         old_icon = self._current_icon
         self.nid.hIcon = new_icon
         self.nid.szTip = tooltip[:127]
@@ -350,6 +355,22 @@ def render_net(m):
             inactive = "\n" + ping_marker(family, False) + " " + " / ".join(fmt_ping_line(*r) for r in other)
             tooltip += inactive[:max(0, 127 - len(tooltip))]
     return lines, tooltip[:127]
+
+
+def usage_line_colors(m, metric, limits):
+    from usage_limits import usage_color, DEFAULT_TEMP_LIMITS
+    if metric == 'gpu' and m['gpu_usage'] is None:
+        metric = 'mem'
+    key = {'cpu': 'cpu_percent', 'gpu': 'gpu_usage', 'mem': 'mem_percent'}[metric]
+    colors = limits.get('colors')
+    usage = usage_color(m[key], limits[metric], '#ffffff', colors)
+    temperature = usage_color(m.get(metric + '_temp'), limits.get(metric + '_temp', DEFAULT_TEMP_LIMITS[metric + '_temp']),
+                              '#ffffff', colors) if metric != 'mem' else '#ffffff'
+    result = []
+    for color in (usage, temperature):
+        r, g, b = (int(color[i:i+2], 16) for i in (1, 3, 5))
+        result.append(r | (g << 8) | (b << 16))
+    return result
 
 
 def render_cpu(m):
@@ -395,16 +416,20 @@ def run():
     if ping:
         ping.start()
 
+    from usage_limits_ui import TrayLimitsPreferences
+    preferences = TrayLimitsPreferences(cfg, Path(__file__).with_name("config.ini"))
+
     hInstance = kernel32.GetModuleHandleW(None)
 
     def wnd_proc(hwnd, msg, wparam, lparam):
         if msg == WM_DESTROY:
+            preferences.close()
             user32.PostQuitMessage(0)
             return 0
         if msg == WM_TRAYICON:
             event = lparam & 0xFFFF
             if event == WM_RBUTTONUP:
-                if show_exit_menu(hwnd):
+                if show_exit_menu(hwnd, preferences.show):
                     user32.DestroyWindow(hwnd)
                 return 0
             # WM_LBUTTONUP intentionally does nothing — an accidental
@@ -430,8 +455,8 @@ def run():
 
     slots = [
         TrayIconSlot(hwnd, 1, render_net),
-        TrayIconSlot(hwnd, 2, render_cpu),
-        TrayIconSlot(hwnd, 3, render_gpu_mem),
+        TrayIconSlot(hwnd, 2, render_cpu, color_fn=lambda m: usage_line_colors(m, "cpu", preferences.limits)),
+        TrayIconSlot(hwnd, 3, render_gpu_mem, color_fn=lambda m: usage_line_colors(m, "gpu", preferences.limits)),
     ]
 
     # Wait one collector tick so the first icons show real data, not zeros.
@@ -459,6 +484,7 @@ def run():
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
     finally:
+        preferences.close()
         for slot in slots:
             slot.remove()
         collector.stop()

@@ -89,6 +89,9 @@ class GroupViewTests(unittest.TestCase):
                                      'accent_up': 'green', 'accent_down': 'blue'}
         window.cfg = window.full_cfg['window']
         window._build_embedded_ui()
+        for label in (window.lbl_cpu, window.lbl_gpu):
+            label.cget.return_value = 'CPU 0% '
+            label.place_info.return_value = {'y': '0'}
         width_v4 = window.embed_width
         window._layout_embedded = Mock(wraps=window._layout_embedded)
         window._request_rebuild = Mock()

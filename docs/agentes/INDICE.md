@@ -1,4 +1,4 @@
-Atualizado em 2026-10-20 (branch main; grupos IPv4/IPv6 e seleção automática; commit "perda de pacotes por grupo IPv4/IPv6")
+Atualizado em 2026-10-25 (branch main; limites de temperatura e cores; sem commit)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.

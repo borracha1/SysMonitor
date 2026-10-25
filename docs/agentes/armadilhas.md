@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; widgets nas barras secundárias + espaço UIA; sem commit)
+Atualizado em 2026-10-25 (branch main; limites de uso; sem commit)
 
 # Armadilhas e decisões
 | Problema / decisão | Causa e regra para não repetir | Fonte |
@@ -28,6 +28,10 @@ Atualizado em 2026-10-21 (branch main; widgets nas barras secundárias + espaço
 - Uma sessão só, com Metrics/PingMonitor compartilhados e editor único. Rebuild simples do principal não recria secundárias; edição de grupos recria todas. Cancelar after e quebrar referência principal↔sessão ao fechar.
 - Testes de múltiplos widgets com Mock devem limpar históricos da factory (guardam root/sessão nos argumentos) e referências cíclicas na thread Tk antes de iniciar workers. Reproduzido aborto nativo `Tcl_AsyncDelete: async handler deleted by the wrong thread` quando o GC de uma worker recolheu uma raiz de teste; corrigido o teardown, seguido de duas suítes completas aprovadas. Não remover o isolamento em janelas-pai nem reiniciar o Explorer para testar.
 - DPI misto não foi resolvido/validado: fontes Tk usam a escala do interpretador, sem ajuste dedicado por monitor. Mantida a awareness existente e coordenadas de tela; o cenário previsto/testado é 100% nos dois monitores. Conferir manualmente outras escalas.
+
+## Editor de limites na bandeja
+- `wait_window` de Tk é um laço modal aninhado na mesma thread das mensagens Win32. `Fechar` pode chegar com o editor aberto: no WM_DESTROY chamar `preferences.close()` ANTES de PostQuitMessage, liberando wait_window; só postar WM_QUIT pode impedir o retorno ao finally. Manter também close idempotente no finally. Nunca criar/manipular Tk na worker de refresh dos ícones.
+- Testes devem usar `tempfile.TemporaryDirectory()` sem indexar `os.environ['TMPDIR']`: PowerShell comum pode não definir a variável (quatro KeyError reproduzidos). Ao mover import puro para o topo, ajustar namespaces dos testes AST que carregam apenas definições, sem importar a entrada Win32.
 
 ## Limites e riscos visíveis no código
 - Bandeja não registra `TaskbarCreated`; sobrevivência dos ícones a restart de Explorer: (a confirmar) em execução.

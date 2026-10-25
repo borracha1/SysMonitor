@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; sem commit)
+Atualizado em 2026-10-25 (branch main; limites de temperatura e cores; sem commit)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -13,7 +13,7 @@ Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; se
 - Sensores ausentes mostram `--`; `cpu_temp_error` ou `gpu_error` ativa ⚠ vermelho.
 - Cores, Segoe UI e tamanho vêm de configuração; largura embutida é medida pela fonte.
 - Floating salva x/y ao soltar arraste; docked/taskbar derivam posição da barra.
-- Menu direito: caixa de tráfego estimado sempre presente; só com ping habilitado e monitor existente aparecem rádios `Automático`, `Só IPv4`, `Só IPv6` (grupo vazio desabilitado), `Configurar destinos…`, separador e `Fechar`. Seleção persiste `mode`, aplica `set_mode` imediatamente, sem reconstrução; falha de gravação mantém modo anterior e registra log. Floating também tem botão ✕.
+- Menu direito: `Configurar limites de uso…` sempre presente (inclusive sem ping), antes de `Fechar`; caixa de tráfego estimado sempre presente; só com ping habilitado e monitor existente aparecem rádios `Automático`, `Só IPv4`, `Só IPv6` (grupo vazio desabilitado), `Configurar destinos…` e separador. `Fechar` é sempre oferecido. Seleção persiste `mode`, aplica `set_mode` imediatamente, sem reconstrução; falha de gravação mantém modo anterior e registra log. Floating também tem botão ✕.
 - Editor único `Toplevel(self.master)` do root oculto, nunca filho do widget embutido no Explorer: topmost, centralizado, não redimensionável, quatro campos `IPv4 1`, `IPv4 2`, `IPv6 1`, `IPv6 2` e rádios de preferido no automático. Validação estrita por família, duplicados canônicos rejeitados, pelo menos um IP e preferido não vazio; Salvar/Cancelar, Enter/Esc, erro vermelho local. Reabrir traz a instância existente para frente.
 - Salvar persiste `targets_v4`, `targets_v6`, `preferred` antes de aplicar `set_groups`; erro não aplica nada. Se a edição esvaziar a família manual atual, modo acompanha a única família restante, também persistido. Reconstrução intencional usa `reconfigure_requested`: imediata, sem pausa de 2 s, sem contar perda nem log `window lost`.
 - Verificação atual por fakes/AST: alinhamento das duas linhas, expansão IPv4→IPv6, encolhimento IPv6→IPv4 e ausência de relayout sem mudança nos três modos. A validação anterior em Tk oculto não comprovava espaçamento justo no IPv4; a correção ainda aguarda conferência interativa no Explorer/DPI do usuário após reinício manual autorizado. Esta tarefa não reiniciou o widget.
@@ -22,6 +22,15 @@ Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; se
 - Testes Win32/Tk isolam o pai em uma janela de teste, nunca a barra real: WindowFromPoint confirma hit no SysMonitor; verificam retângulos, ordem Z, re-embedding, perda da apanhadora, limpeza e alinhamento nos três modos. Conferência interativa pelo Mateus no Explorer/DPI real continua pendente; widget em execução não foi reiniciado.
 - Coordenadas do menu no modo taskbar vêm de `GetCursorPos`, não de Tk.
 - Eventos de menu usam bind do Toplevel, não `bind_all`, para sobreviver à reconstrução.
+
+## Limites de uso, temperatura e cores (widget e bandeja)
+- `Configurar limites de uso…` abre o editor compartilhado (`usage_limits_ui.py`): caixas clicáveis Low/Warning/High no topo, grupo Uso (%) com CPU/GPU/MEMÓRIA e grupo Temperatura (°C) com CPU/GPU. Quinze campos, Restaurar cores padrão, Salvar/Cancelar, Enter/Esc. Instância única por raiz Tk oculta, sem parent no Explorer. Erro identifica a linha inválida e não grava/aplica nada.
+- Uso: `0 ≤ Low < Warning < High ≤ 100`, defaults 50/75/90. Temperatura: mesma ordem até 120 °C, defaults 60/75/85. Decimais com ponto e somente números finitos. Abaixo de Low e sensor ausente: cor normal; demais usam a cor do maior limite atingido.
+- Três cores globais `#rrggbb`, compartilhadas entre uso e temperatura; defaults Low `#5fb0ff`, Warning `#ff9d5f`, High `#ff6b6b`. Clique abre `colorchooser.askcolor(parent=editor.window)`; caixa reflete a escolha imediatamente. Restaurar muda somente a tela. Cancelar descarta; só Salvar persiste atomicamente antes de atualizar config compartilhada/publicar snapshot.
+- CPU/GPU têm duas partes com cores independentes nos três modos. Texto preservado: taskbar/docked `CPU 45% 60°`, floating `CPU: 45%  60°C`. MEM continua um label de uso. Docked/floating usam frame horizontal; taskbar mede a parte de uso pela fonte e coloca temperatura no restante da coluna `hw`, sem mudar `w_hw`, largura total ou posição de MEM.
+- Cada atualização lê novamente a configuração compartilhada. Relayout mantém as duas partes nos níveis 0/1/2 de espaço; somente MEM some no nível 2. Bindtags do Toplevel preservam menu direito em todos os labels/frames, barras secundárias e apanhadora taskbar.
+- Bandeja: primeira linha cor do uso, segunda cor da temperatura CPU/GPU; fallback MEM mantém segunda linha branca. `TrayLimitsPreferences` publica o conjunto completo após salvar, na thread Win32/Tk, nunca na worker de refresh.
+- Captura real do editor isolado em [telas.md](telas.md). Testes reais Tk verificam partes/medidas/menus; widget do Mateus não foi reiniciado. Conferência no Explorer/DPI real permanece manual.
 
 ## Silêncio automático de notificações de ping
 - Com notify=true, cada IP acumula assuntos de toasts de perda em janela móvel: no 5º alerta em até 120 s (inclui exatamente 120 s), fica silenciado antes de emitir o toast de perda. Mesmo avisos omitidos continuam contando. Um toast de perda só some se TODOS os IPs do assunto estão silenciados; se algum não está, sai com o assunto original completo.
@@ -59,6 +68,6 @@ Atualizado em 2026-10-21 (branch main; silêncio de alertas por IP instável; se
 - Dimensão vem de `GetSystemMetrics(SM_CXSMICON/SM_CYSMICON)`, não constante de 16 px.
 - `make_text_icon()` usa DIB 32 bpp, GDI e ajuste manual de alpha; `TrayIconSlot` gerencia HICON.
 - Primeiro desenho ocorre após 1,1 s; atualização a cada 1 s por thread daemon.
-- Clique esquerdo não faz nada; clique direito → `Fechar` destrói janela e sai do loop.
+- Clique esquerdo não faz nada; clique direito → `Configurar limites de uso…` ou `Fechar`. Fechar destrói a raiz/editor Tk antes de postar WM_QUIT, inclusive dentro de wait_window; finally repete a limpeza idempotente.
 - Callback WNDPROC fica referenciado em `_wndproc_ref` durante o processo.
 - Não há tratamento de mensagem `TaskbarCreated` para registrar ícones após reiniciar Explorer.

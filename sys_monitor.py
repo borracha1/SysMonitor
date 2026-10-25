@@ -34,6 +34,7 @@ import traceback
 import configparser
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 
 import psutil
 import tkinter as tk
@@ -46,6 +47,7 @@ from ping_config import save_ping_settings, save_window_settings
 from net_split import PacketCounters, split_rates, net_column_width
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
 from taskbar_session import TaskbarSession
+from usage_limits import load_preferences, usage_color
 
 APP_NAME = "SysMonitor"
 CONFIG_PATH = Path(__file__).with_name("config.ini")
@@ -767,10 +769,10 @@ class MonitorWindow:
                 colp = self._build_ping_panel(frame, bg, font)
                 colp.pack(side="left", fill="y", padx=(4, 4), before=col2)
 
-            self.lbl_cpu = tk.Label(col2, text="CPU --%", fg=fg, bg=bg, font=font, anchor="w")
-            self.lbl_gpu = tk.Label(col2, text="GPU --%", fg=fg, bg=bg, font=font, anchor="w")
-            self.lbl_cpu.pack(anchor="w")
-            self.lbl_gpu.pack(anchor="w")
+            self.cpu_row = self._build_hardware_row(col2, 'cpu', bg, fg, font)
+            self.gpu_row = self._build_hardware_row(col2, 'gpu', bg, fg, font)
+            self.cpu_row.pack(anchor="w")
+            self.gpu_row.pack(anchor="w")
 
             self.lbl_mem = tk.Label(frame, text="MEM --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_mem.pack(side="left", padx=(0, 8))
@@ -782,13 +784,13 @@ class MonitorWindow:
             self.lbl_down = tk.Label(frame, text="↓ -- KB/s", fg=self.cfg["accent_down"], bg=bg, font=font, anchor="w")
             if self.ping_enabled:
                 self.ping_panel = self._build_ping_panel(frame, bg, font)
-            self.lbl_cpu = tk.Label(frame, text="CPU: --%  --°C", fg=fg, bg=bg, font=font, anchor="w")
-            self.lbl_gpu = tk.Label(frame, text="GPU: --%  --°C", fg=fg, bg=bg, font=font, anchor="w")
+            self.cpu_row = self._build_hardware_row(frame, 'cpu', bg, fg, font)
+            self.gpu_row = self._build_hardware_row(frame, 'gpu', bg, fg, font)
             self.lbl_mem = tk.Label(frame, text="MEM: --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_status = tk.Label(frame, text="", fg="#ff6b6b", bg=bg, font=("Segoe UI", 7), anchor="w")
 
             widgets = (self.lbl_up, self.lbl_down) + ((self.ping_panel,) if self.ping_enabled else ()) \
-                + (self.lbl_cpu, self.lbl_gpu, self.lbl_mem)
+                + (self.cpu_row, self.gpu_row, self.lbl_mem)
             for w in widgets:
                 w.pack(fill="x", **pad)
             self.lbl_status.pack(fill="x", padx=6)
@@ -796,6 +798,31 @@ class MonitorWindow:
             close_btn = tk.Label(frame, text="✕", fg=fg, bg=bg, font=("Segoe UI", 8), cursor="hand2")
             close_btn.place(relx=1.0, y=2, anchor="ne")
             close_btn.bind("<Button-1>", lambda e: self.quit())
+
+    def _build_hardware_row(self, parent, metric, bg, fg, font):
+        row = tk.Frame(parent, bg=bg, padx=2, pady=1)
+        common: dict[str, Any] = dict(fg=fg, bg=bg, font=font, anchor="w", bd=0, padx=0, pady=0,
+                      highlightthickness=0)
+        prefix = metric.upper() + (': --%  ' if self.mode == 'floating' else ' --% ')
+        usage = tk.Label(row, text=prefix, **common)
+        temp = tk.Label(row, text='--°C' if self.mode == 'floating' else '--°', **common)
+        usage.pack(side='left')
+        temp.pack(side='left')
+        setattr(self, 'lbl_' + metric, usage)
+        setattr(self, 'lbl_' + metric + '_temp', temp)
+        return row
+
+    def _position_hardware_parts(self):
+        if self.mode != 'taskbar' or not hasattr(self, 'lbl_cpu_temp'):
+            return
+        x, width = self._cols['hw']
+        for metric in ('cpu', 'gpu'):
+            usage = getattr(self, 'lbl_' + metric)
+            temp = getattr(self, 'lbl_' + metric + '_temp')
+            used = min(width, self.font.measure(usage.cget('text')))
+            y = int(usage.place_info().get('y', 0))
+            usage.place(x=x, y=y, width=used, height=self._line_h)
+            temp.place(x=x + used, y=y, width=max(0, width - used), height=self._line_h)
 
     def _build_ping_panel(self, parent, bg, font):
         measured = tkfont.Font(root=self.root, font=font)
@@ -823,14 +850,16 @@ class MonitorWindow:
         self._line_h = self.font.metrics("linespace")
         self._calculate_embedded_columns()
 
-        common = dict(bg=key, font=self.font, anchor="w", bd=0, padx=0, pady=0, highlightthickness=0)
+        common: dict[str, Any] = dict(bg=key, font=self.font, anchor="w", bd=0, padx=0, pady=0, highlightthickness=0)
         self.lbl_up = tk.Label(self.root, text="↑ --", fg=self.cfg["accent_up"], **common)
         self.lbl_down = tk.Label(self.root, text="↓ --", fg=self.cfg["accent_down"], **common)
         if self.ping_enabled:
             self.ping_marker_label = tk.Label(self.root, text="", fg=fg, **common)
             self.ping_labels = [tk.Label(self.root, text="", fg=fg, **common) for _ in range(2)]
-        self.lbl_cpu = tk.Label(self.root, text="CPU --%", fg=fg, **common)
-        self.lbl_gpu = tk.Label(self.root, text="GPU --%", fg=fg, **common)
+        self.lbl_cpu = tk.Label(self.root, text="CPU --% ", fg=fg, **common)
+        self.lbl_gpu = tk.Label(self.root, text="GPU --% ", fg=fg, **common)
+        self.lbl_cpu_temp = tk.Label(self.root, text="--°", fg=fg, **common)
+        self.lbl_gpu_temp = tk.Label(self.root, text="--°", fg=fg, **common)
         self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
         self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
 
@@ -918,6 +947,7 @@ class MonitorWindow:
                 x += self._ping_marker_width
                 w -= self._ping_marker_width
             lbl.place(x=x, y=y, width=w, height=ls)
+        self._position_hardware_parts()
         if self.ping_enabled:
             self.ping_marker_label.place(x=self._cols["ping"][0], y=y0,
                                          width=self._ping_marker_width, height=ls)
@@ -1043,6 +1073,7 @@ class MonitorWindow:
                                      command=lambda mode=value: self._select_ping_mode(mode))
             menu.add_command(label="Configurar destinos…", command=self._edit_ping_targets)
             menu.add_separator()
+        menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_command(label="Fechar", command=self.quit)
 
         def show_menu(e):
@@ -1062,6 +1093,10 @@ class MonitorWindow:
         self.root.bind("<Button-3>", show_menu)
         if getattr(self, "click_catcher", None) is not None:
             self.click_catcher.bind("<Button-3>", show_menu)
+
+    def _edit_usage_limits(self):
+        from usage_limits_ui import open_limits_editor
+        return open_limits_editor(self.master, self.full_cfg, CONFIG_PATH)
 
     def _select_net_split(self):
         selected = bool(self._net_mode_var.get())
@@ -1310,15 +1345,28 @@ class MonitorWindow:
         if self.mode in ("taskbar", "docked"):
             self.lbl_up.config(text=f"↑{fmt_speed(m['up_speed'])}")
             self.lbl_down.config(text=f"↓{fmt_speed(m['down_speed'])}")
-            self.lbl_cpu.config(text=f"CPU {m['cpu_percent']:.0f}% {cpu_t}°")
-            self.lbl_gpu.config(text=f"GPU {gpu_u}% {gpu_t}°")
+            self.lbl_cpu.config(text=f"CPU {m['cpu_percent']:.0f}% ")
+            self.lbl_gpu.config(text=f"GPU {gpu_u}% ")
             self.lbl_mem.config(text=f"MEM {m['mem_percent']:.0f}%")
         else:
             self.lbl_up.config(text=f"↑ {fmt_speed(m['up_speed'])}")
             self.lbl_down.config(text=f"↓ {fmt_speed(m['down_speed'])}")
-            self.lbl_cpu.config(text=f"CPU: {m['cpu_percent']:.0f}%  {cpu_t}°C")
-            self.lbl_gpu.config(text=f"GPU: {gpu_u}%  {gpu_t}°C")
+            self.lbl_cpu.config(text=f"CPU: {m['cpu_percent']:.0f}%  ")
+            self.lbl_gpu.config(text=f"GPU: {gpu_u}%  ")
             self.lbl_mem.config(text=f"MEM: {m['mem_percent']:.0f}%")
+
+        cfg = self.full_cfg if hasattr(self, 'full_cfg') else configparser.ConfigParser()
+        limits = load_preferences(cfg)
+        for metric, text in (('cpu', cpu_t), ('gpu', gpu_t)):
+            label = getattr(self, 'lbl_' + metric + '_temp', None)
+            if label is not None:
+                label.config(text=text + ('°C' if self.mode == 'floating' else '°'),
+                             fg=usage_color(m[metric + '_temp'], limits[metric + '_temp'], self._fg, limits['colors']))
+        self._position_hardware_parts()
+        for label, metric, value in ((self.lbl_cpu, 'cpu', m['cpu_percent']),
+                                     (self.lbl_gpu, 'gpu', m['gpu_usage']),
+                                     (self.lbl_mem, 'mem', m['mem_percent'])):
+            label.config(fg=usage_color(value, limits[metric], self._fg, limits['colors']))
 
         self._update_net_split(m)
 
