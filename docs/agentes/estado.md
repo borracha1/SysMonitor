@@ -1,4 +1,4 @@
-Atualizado em 2026-10-25 (branch main; limites de uso, temperatura e cores testados pelo Mateus; commit local, sem push)
+Atualizado em 2026-10-25 (branch main; limites de uso, temperatura e cores testados pelo Mateus; e72da83 publicada no GitHub em 25/10)
 
 # Estado e histórico
 ## Base documentada
@@ -108,7 +108,10 @@ Atualizado em 2026-10-25 (branch main; limites de uso, temperatura e cores testa
 - Suíte completa no PowerShell com TMPDIR removida: 114 testes em 10,839 s e repetição final em 10,995 s, ambas OK; execução final pelo bash: 114 testes em 9,831 s, OK. `py_compile` de 25 fontes (raiz/testes), OK; `git diff --check`, OK. Captura substituída em `docs/agentes/telas/limites-de-uso.png`, 376 × 426 px, Tk próprio/raiz oculta/config temporário inalterado, PowerShell + System.Drawing, conferida visualmente; todas as janelas da captura fechadas.
 - Config.ini local preservado: SHA-256 `6ba954c1bb0e8ce7c89ac66b4508e77accb3a53898d8af64553e09a60dda1d71`. Sem commit/push/branch/tag ou instalação; nenhum comando para encerrar/reiniciar o widget do Mateus. Processo existente identificado como PID 36000, preservado.
 - Limitações: menu/contexto secundário e layouts foram exercitados em Tk isolado, sem interagir com Explorer. Conferência no widget real, bandeja visível e DPI/telas do Mateus depende de reinício manual autorizado; o processo já aberto mantém o código anterior.
-- Teste real: Mateus testou no widget reiniciado às 02:01 de 25/10 (PID 32664, código novo); suíte 116 OK. Commit local na main; push só com aprovação.
+- Teste real: Mateus testou no widget reiniciado às 02:01 de 25/10 (PID 32664, código novo); suíte 116 OK. Commit e72da83 na main, publicado no GitHub (push 25/10, aprovado pelo Mateus).
+
+## Marco 2026-10-25 · conteúdo completo antes do lado direito
+- `choose_layout` agora tenta direita 0 → esquerda 0 → direita 1 → esquerda 1 → direita 2 → esquerda 2, preservando alinhamento, ausência de snapshot e overflow. Regressão real da secundária primeiro em vermelho: 14 testes em 2,184 s, uma falha esperada (`right/2/-620` em vez de `left/0/-1910`); comando focado exigiu PYTHONPATH apontando para tests por import irmão. Casos de política e integração Tk atualizados, incluindo desempate à direita nos níveis 1/2. Suíte completa: `py -3.12 -m unittest discover -s tests -v`, 117 testes em 11,698 s, OK. Mateus reiniciou e conferiu nas duas telas em 25/10 (secundária à esquerda, completa); commit local na main, push só com aprovação.
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.

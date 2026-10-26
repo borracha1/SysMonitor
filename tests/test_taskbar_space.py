@@ -38,13 +38,23 @@ class TaskbarSpaceRegression(unittest.TestCase):
 
 
 class LayoutPolicyTests(unittest.TestCase):
+    def test_full_left_beats_compact_right_secondary_bar(self):
+        snap = SpaceSnapshot(2, (-1920, 1032, 0, 1080),
+                             (-1910, -1262), (-657, -302))
+        result = choose_layout(snap, (487, 388, 318), -302)
+        self.assertEqual((result.side, result.level, result.x, result.overflow),
+                         ('left', 0, -1910, False))
+        self.assertEqual(result.width, 487)
+
     def test_priority_and_alignment(self):
         widths = (487, 388, 318)
         cases = [
             ((1583, 2214), (10, 978), 'right', 0, 1727, False),
-            ((1100, 1500), (10, 900), 'right', 1, 1112, False),
+            ((1100, 1500), (10, 900), 'left', 0, 10, False),
+            ((1100, 1500), (10, 410), 'right', 1, 1112, False),
             ((1263, 1574), (10, 658), 'left', 0, 10, False),
-            ((1200, 1520), (10, 900), 'right', 2, 1202, False),
+            ((1200, 1520), (10, 900), 'left', 0, 10, False),
+            ((1200, 1520), (10, 330), 'right', 2, 1202, False),
             ((1300, 1500), (50, 450), 'left', 1, 50, False),
             ((1300, 1500), (50, 370), 'left', 2, 50, False),
             ((1300, 1500), (50, 250), 'right', 2, 1182, True),
@@ -141,8 +151,9 @@ class TaskbarSpaceIntegrationTests(unittest.TestCase):
             self.assertGreater(w1, w2)
             tr = ns['_win_rect'](parent)
             bounds = (tr.left, tr.top, tr.right, tr.bottom)
-            cases = [(w0, w0, 0, 'right'), (w1, w0, 1, 'right'),
-                     (w2, w0, 2, 'right'), (0, w0, 0, 'left'),
+            cases = [(w0, w0, 0, 'right'), (w1, w0, 0, 'left'),
+                     (w2, w0, 0, 'left'), (w1, w1, 1, 'right'),
+                     (w2, w2, 2, 'right'), (0, w0, 0, 'left'),
                      (0, w1, 1, 'left'), (0, w2, 2, 'left'),
                      (0, 0, 2, 'right'), (w0, w0, 0, 'right')]
             for right_space, left_space, level, side in cases:

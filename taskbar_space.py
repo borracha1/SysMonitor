@@ -25,12 +25,12 @@ class Layout:
 
 
 def choose_layout(snapshot, widths, tray_right):
-    """Prefer all right-hand levels before any left-hand level."""
+    """Prefer fuller levels, trying right then left at each level."""
     if snapshot is None:
         return Layout('right', 0, tray_right - widths[0], widths[0])
-    for side in ('right', 'left'):
-        begin, end = getattr(snapshot, side)
-        for level, width in enumerate(widths):
+    for level, width in enumerate(widths):
+        for side in ('right', 'left'):
+            begin, end = getattr(snapshot, side)
             if end - begin >= width:
                 return Layout(side, level, end - width if side == 'right' else begin, width)
     return Layout('right', 2, tray_right - widths[2], widths[2], True)
