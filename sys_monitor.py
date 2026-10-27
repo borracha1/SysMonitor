@@ -595,6 +595,7 @@ class Metrics:
         self.gpu_temp = None
         self.gpu_usage = None
         self.cpu_temp_error = None
+        self.lhm_reachable = None
         self.gpu_error = None
         self.ping: tuple[tuple[str, float, float | None, bool], ...] | None = None
         self.ping_family = "ipv4"
@@ -613,6 +614,7 @@ class Metrics:
                 gpu_temp=self.gpu_temp,
                 gpu_usage=self.gpu_usage,
                 cpu_temp_error=self.cpu_temp_error,
+                lhm_reachable=self.lhm_reachable,
                 gpu_error=self.gpu_error,
                 ping=self.ping,
                 ping_family=self.ping_family,

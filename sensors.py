@@ -113,6 +113,13 @@ class LhmReader:
     def __init__(self, url: str = LHM_URL):
         self._url = url
         self._last_error: Optional[str] = None
+        self._reachable: Optional[bool] = None
+
+    @property
+    def reachable(self) -> Optional[bool]:
+        """False when the web server didn't answer; True when it answered,
+        even without a CPU sensor; None before the first read."""
+        return self._reachable
 
     @property
     def last_error(self) -> Optional[str]:
@@ -124,11 +131,13 @@ class LhmReader:
             with urllib.request.urlopen(self._url, timeout=LHM_TIMEOUT_S) as resp:
                 tree = json.load(resp)
         except Exception as e:
+            self._reachable = False
             self._last_error = (
                 f"LibreHardwareMonitor not reachable ({e}). "
                 "Is it running with Options -> Remote Web Server -> Run?"
             )
             return None
+        self._reachable = True
         temps = {}
         for node in _walk(tree):
             sid = node.get("SensorId", "")
@@ -168,6 +177,7 @@ class SensorReader:
             gpu_temp=gpu_temp,
             gpu_usage=gpu_usage,
             cpu_temp_error=cpu_temp_error,
+            lhm_reachable=self._lhm.reachable,
             gpu_error=gpu_error,
         )
 
