@@ -53,8 +53,11 @@ mudanças no modo `.py` que o Mateus usa hoje.
 - **Com console** (`console=True`): o código já esconde o console; o modo sem console equivale ao
   `pythonw`, que tem falha de pintura na janela em camadas (`sys_monitor.py:107`).
 - Ícone: padrão do PyInstaller nesta versão (`assets/` está vazio; arte própria fica para depois).
-- Python do build: `C:\Python314` num venv `.venv-build` na raiz do projeto (gitignored), com
-  `psutil`, `comtypes` e `pyinstaller`. Não usar o Python da Store para empacotar.
+- Python do build: venv `.venv-build` na raiz do projeto (gitignored) criado com `py -3.12`, o mesmo
+  Python 3.12 / Tk 8.6 em que o widget roda hoje, com `psutil`, `comtypes` e `pyinstaller` em
+  versões fixadas. Não usar o `C:\Python314`: ele traz Tk 9.0, e o widget depende de
+  comportamentos de janela (camadas, alpha, `SetParent`) validados só em Tk 8.6. (Correção de
+  2026-10-26, feita ao escrever o plano.)
 
 ### `build.ps1` (na raiz, versionado)
 
