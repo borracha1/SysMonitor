@@ -1,0 +1,22 @@
+﻿SysMonitor 1.0.0
+
+Monitor de rede, CPU, GPU e memória que fica na barra de tarefas.
+
+Antes de instalar:
+- Instale pela sua própria conta do Windows. Se você usa uma conta sem
+  administrador e digitar a senha de outra conta, os atalhos e a tarefa
+  podem ir para a outra conta.
+- O instalador não tem assinatura digital. Se o Windows mostrar
+  "O Windows protegeu o computador" (SmartScreen), clique em
+  "Mais informações" e depois em "Executar assim mesmo".
+
+O que o instalador faz (pede administrador uma vez):
+- Instala o PawnIO (driver assinado que o LibreHardwareMonitor usa para
+  ler a temperatura da CPU), baixado do site oficial, se ainda não houver.
+- Copia o LibreHardwareMonitor 0.9.6 (licença MPL-2.0, código em
+  https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) e cria a
+  tarefa "SysMonitor LHM", que o abre no logon, se ainda não houver.
+- Instala o SysMonitor, que roda sem administrador.
+
+Configurações ficam em %APPDATA%\SysMonitor.
+Para desinstalar: Configurações > Aplicativos > SysMonitor.
