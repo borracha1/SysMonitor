@@ -58,6 +58,44 @@ class TaskXmlTests(unittest.TestCase):
                 (INSTALLER / name).read_bytes().decode('ascii')
 
 
+class StartupTasksTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        text = (INSTALLER / 'SysMonitor.iss').read_text(encoding='utf-8-sig')
+        section = text.split('[Tasks]', 1)[1].split('[', 1)[0]
+        cls.tasks = []
+        for line in section.splitlines():
+            if line.strip().startswith('Name:'):
+                fields = dict(field.strip().split(':', 1) for field in line.split(';'))
+                cls.tasks.append({key: value.strip().strip('"')
+                                  for key, value in fields.items()})
+
+    def test_startup_choices_order_and_group(self):
+        startup = [task for task in self.tasks if task['Name'] != 'atalhodesktop']
+        self.assertEqual([task['Name'] for task in startup],
+                         ['iniciarwidget', 'iniciarbandeja', 'naoiniciar'])
+        for task in startup:
+            with self.subTest(name=task['Name']):
+                self.assertEqual(task['GroupDescription'], 'Iniciar com o Windows:')
+
+    def test_startup_choices_exclusive_and_defaults(self):
+        for name in ('iniciarwidget', 'iniciarbandeja', 'naoiniciar'):
+            with self.subTest(name=name):
+                task = next((task for task in self.tasks if task['Name'] == name), None)
+                if task is None:
+                    self.fail(f'Tarefa ausente: {name}')
+                flags = task.get('Flags', '').split()
+                self.assertIn('exclusive', flags)
+                self.assertEqual('unchecked' in flags, name != 'iniciarwidget')
+
+    def test_desktop_shortcut_stays_optional_and_independent(self):
+        desktop = [task for task in self.tasks if task['Name'] == 'atalhodesktop']
+        self.assertEqual(len(desktop), 1)
+        flags = desktop[0].get('Flags', '').split()
+        self.assertNotIn('exclusive', flags)
+        self.assertIn('unchecked', flags)
+
+
 class LhmConfigTests(unittest.TestCase):
     def test_web_server_settings(self):
         tree = ET.parse(INSTALLER / 'LibreHardwareMonitor.config')

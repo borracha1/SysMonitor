@@ -35,8 +35,9 @@ CloseApplications=no
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
-Name: "iniciarwidget"; Description: "Iniciar o widget com o Windows"; GroupDescription: "Inicialização:"
-Name: "iniciarbandeja"; Description: "Iniciar a bandeja com o Windows"; GroupDescription: "Inicialização:"; Flags: unchecked
+Name: "iniciarwidget"; Description: "Widget na barra de tarefas (recomendado)"; GroupDescription: "Iniciar com o Windows:"; Flags: exclusive
+Name: "iniciarbandeja"; Description: "Ícones na bandeja (se o widget ficar coberto no seu PC)"; GroupDescription: "Iniciar com o Windows:"; Flags: exclusive unchecked
+Name: "naoiniciar"; Description: "Não iniciar com o Windows"; GroupDescription: "Iniciar com o Windows:"; Flags: exclusive unchecked
 Name: "atalhodesktop"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos:"; Flags: unchecked
 
 [InstallDelete]
