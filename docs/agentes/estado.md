@@ -1,4 +1,4 @@
-Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0 gerados, aguardando teste real do Mateus)
+Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0; pré-release v1.0.0-teste para o teste do amigo)
 
 # Estado e histórico
 ## Base documentada
@@ -116,7 +116,17 @@ Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0 gerados, agu
 ## Marco 2026-10-27 · exe e instalador 1.0.0 (branch versao-1.0, sem teste real)
 - Plano 7355f0c; executado pelo Hermes em dois lotes, revisado pelo Claude: 2f2cf6a (`app_paths`/`version`), 6500906 (`--verificar`), a3816e6 (`LhmReader.reachable`), 6573392 (aviso "LibreHardwareMonitor fora do ar" no menu do widget, `lhm_launcher.py`), 299cf7e (arquivos do instalador), 2b0de70 (PyInstaller + `build.ps1`), 1705efe (Inno Setup).
 - 147 testes OK; os dois exes passam no `--verificar`; `dist/SysMonitor-Setup-1.0.0.exe` gerado. Detalhes em [build-e-uso.md](build-e-uso.md).
-- Pendente: teste real do Mateus (Windows Sandbox, PC dele, PC de um amigo), incluindo o código de saída do PawnIO e a instalação por cima. Sem merge na main, push, tag ou release antes disso.
+- Sandbox (27/10): 1ª instalação limpa OK (PawnIO `-install -silent` -> 0, tarefa criada e iniciada, widget abriu). Escolha única de inicialização em 3fa89b0 (150 testes OK). Faltam no Sandbox: reinstalar por cima, aviso do LHM, desinstalar.
+- Segurança (docs/seguranca.md, seção A), conferida em 2026-10-27 para a pré-release `v1.0.0-teste`:
+  - Segredos: nenhum no código; `gitleaks git . --redact` em 23 commits, sem vazamentos. `config.ini` versionado só tem padrões e não entra no instalador.
+  - GitHub (2FA, push protection, Dependabot): conferido pelo Mateus em 2026-10-12 para todos os repos.
+  - Dependências: `requirements-build.txt` com versões fixas; `pip-audit -r requirements-build.txt` sem vulnerabilidades conhecidas. LHM 0.9.6 e PawnIO 2.2.0 baixados com SHA-256 fixado.
+  - Logs: `crash.log`/`sysmon.log` só locais em `%APPDATA%\SysMonitor`, sem dados sensíveis; stack trace não vai para a tela.
+  - Entradas: só `config.ini` local e o JSON do LHM em 127.0.0.1 (HTTP local, sem credenciais). Uploads: n/a.
+  - HTTPS: downloads do build e do instalador por HTTPS com hash; o resto é local (LHM 127.0.0.1) ou ICMP.
+  - Backup: n/a (só preferências). Alertas de cota: n/a (sem serviço pago). Privacidade: nada é coletado nem enviado.
+  - Pendente: assinatura de código (setup e exes sem Authenticode; o Smart App Control ligado bloqueia). Checksum SHA-256 publicado junto da release.
+- Mateus aprovou em 27/10 publicar antes do fim do teste para um amigo baixar: pré-release `v1.0.0-teste` a partir da `versao-1.0`, sem merge na main. Release oficial depois do teste do amigo.
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
