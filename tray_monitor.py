@@ -28,6 +28,7 @@ from ctypes import wintypes
 import traceback
 import threading
 from app_paths import data_dir
+from self_check import is_self_check, run_self_check
 from datetime import datetime
 
 from metrics_collector import Metrics, Collector
@@ -79,7 +80,8 @@ def hide_console_window():
         pass
 
 
-hide_console_window()
+if not is_self_check(sys.argv[1:]):
+    hide_console_window()
 
 
 def ensure_single_instance():
@@ -494,4 +496,7 @@ def run():
 
 
 if __name__ == "__main__":
+    if is_self_check(sys.argv[1:]):
+        sys.exit(run_self_check("bandeja", ("usage_limits_ui", "usage_limits"),
+                                uia=False))
     run()

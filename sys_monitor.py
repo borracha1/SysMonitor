@@ -33,6 +33,7 @@ import threading
 import traceback
 import configparser
 from app_paths import data_dir
+from self_check import is_self_check, run_self_check
 from datetime import datetime
 from typing import Any
 
@@ -122,7 +123,8 @@ def hide_console_window():
         pass  # non-fatal: worst case the console stays visible
 
 
-hide_console_window()
+if not is_self_check(sys.argv[1:]):
+    hide_console_window()
 
 
 # ---------------------------------------------------------------------------
@@ -1509,4 +1511,7 @@ def main():
 
 
 if __name__ == "__main__":
+    if is_self_check(sys.argv[1:]):
+        sys.exit(run_self_check("widget", ("usage_limits_ui", "tkinter.messagebox"),
+                                uia=True))
     main()
