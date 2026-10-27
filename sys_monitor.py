@@ -1079,6 +1079,7 @@ class MonitorWindow:
             menu.add_separator()
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_command(label="Fechar", command=self.quit)
+        self._lhm_menu_shown = 0
 
         def show_menu(e):
             if self.mode == "taskbar":
@@ -1089,6 +1090,9 @@ class MonitorWindow:
                 x, y = pt.x, pt.y
             else:
                 x, y = e.x_root, e.y_root
+            from lhm_launcher import sync_menu
+            self._lhm_menu_shown = sync_menu(menu, self.metrics.snapshot().get("lhm_reachable"),
+                                             self._lhm_menu_shown, self._open_lhm)
             menu.tk_popup(x, y)
 
         # Bound on the Toplevel (every child widget's bindtags include it),
@@ -1097,6 +1101,13 @@ class MonitorWindow:
         self.root.bind("<Button-3>", show_menu)
         if getattr(self, "click_catcher", None) is not None:
             self.click_catcher.bind("<Button-3>", show_menu)
+
+    def _open_lhm(self):
+        from lhm_launcher import open_lhm
+        if not open_lhm(_log_event):
+            from tkinter import messagebox
+            messagebox.showwarning(APP_NAME, "Não consegui abrir o LibreHardwareMonitor.",
+                                   parent=self.master)
 
     def _edit_usage_limits(self):
         from usage_limits_ui import open_limits_editor
@@ -1514,6 +1525,6 @@ def main():
 
 if __name__ == "__main__":
     if is_self_check(sys.argv[1:]):
-        sys.exit(run_self_check("widget", ("usage_limits_ui", "tkinter.messagebox"),
+        sys.exit(run_self_check("widget", ("usage_limits_ui", "lhm_launcher", "tkinter.messagebox"),
                                 uia=True))
     main()

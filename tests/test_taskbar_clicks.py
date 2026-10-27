@@ -39,6 +39,8 @@ class TaskbarClickTests(unittest.TestCase):
         window = ns['MonitorWindow'].__new__(ns['MonitorWindow'])
         window.root, window.master, window.click_catcher = Mock(), Mock(), Mock()
         window.mode, window.ping_enabled, window.ping_monitor = 'taskbar', False, None
+        window.metrics = Mock()
+        window.metrics.snapshot.return_value = {'lhm_reachable': None}
         window._bind_menu()
         callback = window.root.bind.call_args.args[1]
         window.click_catcher.bind.assert_called_once_with('<Button-3>', callback)

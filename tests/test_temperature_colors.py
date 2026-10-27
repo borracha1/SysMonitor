@@ -148,6 +148,7 @@ class TemperatureColorsTests(unittest.TestCase):
             w.cfg, w.full_cfg, w.mode = cfg['window'], cfg, mode
             w._fg, w.ping_enabled, w.ping_monitor = '#e6e6e6', False, None
             w.ping_labels, w._space_level = [], 0
+            w.metrics = ns['Metrics']()
             w._net_cells, w._net_active, w.net_split = [], False, False
             w.click_catcher = tk.Toplevel(root) if mode == 'taskbar' else None
             try:
