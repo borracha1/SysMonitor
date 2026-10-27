@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.log
 backup/
+.venv-build/
+build/
+dist/

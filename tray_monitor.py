@@ -27,14 +27,15 @@ import ctypes
 from ctypes import wintypes
 import traceback
 import threading
-from pathlib import Path
+from app_paths import data_dir
 from datetime import datetime
 
 from metrics_collector import Metrics, Collector
 from ping_monitor import PingMonitor, ping_marker, fmt_ping_line
 
 APP_NAME = "SysMonitorTray"
-CRASH_LOG_PATH = Path(__file__).with_name("crash.log")
+CONFIG_PATH = data_dir() / "config.ini"
+CRASH_LOG_PATH = data_dir() / "crash.log"
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -409,7 +410,7 @@ def run():
     collector = Collector(metrics, interval_s=1.0)
     collector.start()
     cfg = configparser.ConfigParser()
-    cfg.read(Path(__file__).with_name("config.ini"), encoding="utf-8")
+    cfg.read(CONFIG_PATH, encoding="utf-8")
     if not cfg.has_section("ping"):
         cfg.add_section("ping")
     ping = PingMonitor.from_config(cfg["ping"], metrics)
@@ -417,7 +418,7 @@ def run():
         ping.start()
 
     from usage_limits_ui import TrayLimitsPreferences
-    preferences = TrayLimitsPreferences(cfg, Path(__file__).with_name("config.ini"))
+    preferences = TrayLimitsPreferences(cfg, CONFIG_PATH)
 
     hInstance = kernel32.GetModuleHandleW(None)
 

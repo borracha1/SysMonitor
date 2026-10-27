@@ -32,7 +32,7 @@ import ctypes.wintypes as wintypes
 import threading
 import traceback
 import configparser
-from pathlib import Path
+from app_paths import data_dir
 from datetime import datetime
 from typing import Any
 
@@ -50,9 +50,9 @@ from taskbar_session import TaskbarSession
 from usage_limits import load_preferences, usage_color
 
 APP_NAME = "SysMonitor"
-CONFIG_PATH = Path(__file__).with_name("config.ini")
-CRASH_LOG_PATH = Path(__file__).with_name("crash.log")
-EVENT_LOG_PATH = Path(__file__).with_name("sysmon.log")
+CONFIG_PATH = data_dir() / "config.ini"
+CRASH_LOG_PATH = data_dir() / "crash.log"
+EVENT_LOG_PATH = data_dir() / "sysmon.log"
 
 
 # ---------------------------------------------------------------------------
