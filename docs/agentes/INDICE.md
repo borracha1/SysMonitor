@@ -1,4 +1,4 @@
-Atualizado em 2026-10-25 (branch main; limites de temperatura e cores; sem commit)
+Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0, sem teste real)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -13,11 +13,11 @@ python3 tray_monitor.py
 python3 sensors.py
 python3 create_shortcut.py
 ```
-Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Não há comando de build no repositório.
+Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Sem versão formal declarada. Branch `main`; base de código `9ccd25a`, sincronizada com `origin/main`.
-Última mudança funcional: perda de pacotes por grupo IPv4/IPv6 com troca automática (2026-10-21); detalhes em [estado.md](estado.md).
+Versão 1.0.0 (`version.py`) na branch `versao-1.0`: exe e instalador gerados, aguardando teste real; `main` em 7ebd966, publicada.
+Última mudança funcional: exe/instalador 1.0.0 e aviso de LHM fora do ar (2026-10-27); detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
@@ -26,7 +26,7 @@ Sem versão formal declarada. Branch `main`; base de código `9ccd25a`, sincroni
 | módulos, fluxo de dados, concorrência ou armazenamento | [arquitetura.md](arquitetura.md) |
 | coleta, GPU, temperatura da CPU, falhas de sensores | [sensores-coleta.md](sensores-coleta.md) |
 | widget, barra de tarefas, bandeja, renderização | [interface.md](interface.md) e [armadilhas.md](armadilhas.md) |
-| execução, dependências, atalhos, configuração, testes | [build-e-uso.md](build-e-uso.md) |
+| execução, dependências, atalhos, configuração, testes, build do exe/instalador | [build-e-uso.md](build-e-uso.md) |
 | sumiço, travamento, Explorer, ctypes ou regressão | [armadilhas.md](armadilhas.md) |
 | histórico, limitações, pendências ou versão | [estado.md](estado.md) |
 
@@ -40,4 +40,4 @@ Sem versão formal declarada. Branch `main`; base de código `9ccd25a`, sincroni
 ## Histórico e referências
 - [README existente](../../README.md); a divergência sobre `pythonw.exe` foi corrigida em 2026-10-08.
 - [Estado e marcos Git](estado.md); `git log` é o histórico técnico disponível.
-- Não existem specs, planos, changelog ou `docs/superpowers/` nesta base.
+- Specs e planos em `docs/superpowers/` (exe e instalador 1.0.0: 2026-10-26).

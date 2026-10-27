@@ -1,4 +1,4 @@
-Atualizado em 2026-10-25 (branch main; limites de uso, temperatura e cores testados pelo Mateus; e72da83 publicada no GitHub em 25/10)
+Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0 gerados, aguardando teste real do Mateus)
 
 # Estado e histórico
 ## Base documentada
@@ -111,12 +111,17 @@ Atualizado em 2026-10-25 (branch main; limites de uso, temperatura e cores testa
 - Teste real: Mateus testou no widget reiniciado às 02:01 de 25/10 (PID 32664, código novo); suíte 116 OK. Commit e72da83 na main, publicado no GitHub (push 25/10, aprovado pelo Mateus).
 
 ## Marco 2026-10-25 · conteúdo completo antes do lado direito
-- `choose_layout` agora tenta direita 0 → esquerda 0 → direita 1 → esquerda 1 → direita 2 → esquerda 2, preservando alinhamento, ausência de snapshot e overflow. Regressão real da secundária primeiro em vermelho: 14 testes em 2,184 s, uma falha esperada (`right/2/-620` em vez de `left/0/-1910`); comando focado exigiu PYTHONPATH apontando para tests por import irmão. Casos de política e integração Tk atualizados, incluindo desempate à direita nos níveis 1/2. Suíte completa: `py -3.12 -m unittest discover -s tests -v`, 117 testes em 11,698 s, OK. Mateus reiniciou e conferiu nas duas telas em 25/10 (secundária à esquerda, completa); commit local na main, push só com aprovação.
+- `choose_layout` agora tenta direita 0 → esquerda 0 → direita 1 → esquerda 1 → direita 2 → esquerda 2, preservando alinhamento, ausência de snapshot e overflow. Regressão real da secundária primeiro em vermelho: 14 testes em 2,184 s, uma falha esperada (`right/2/-620` em vez de `left/0/-1910`); comando focado exigiu PYTHONPATH apontando para tests por import irmão. Casos de política e integração Tk atualizados, incluindo desempate à direita nos níveis 1/2. Suíte completa: `py -3.12 -m unittest discover -s tests -v`, 117 testes em 11,698 s, OK. Mateus reiniciou e conferiu nas duas telas em 25/10 (secundária à esquerda, completa); commit 7ebd966 na main, publicado no GitHub (push 25/10, aprovado pelo Mateus).
+
+## Marco 2026-10-27 · exe e instalador 1.0.0 (branch versao-1.0, sem teste real)
+- Plano 7355f0c; executado pelo Hermes em dois lotes, revisado pelo Claude: 2f2cf6a (`app_paths`/`version`), 6500906 (`--verificar`), a3816e6 (`LhmReader.reachable`), 6573392 (aviso "LibreHardwareMonitor fora do ar" no menu do widget, `lhm_launcher.py`), 299cf7e (arquivos do instalador), 2b0de70 (PyInstaller + `build.ps1`), 1705efe (Inno Setup).
+- 147 testes OK; os dois exes passam no `--verificar`; `dist/SysMonitor-Setup-1.0.0.exe` gerado. Detalhes em [build-e-uso.md](build-e-uso.md).
+- Pendente: teste real do Mateus (Windows Sandbox, PC dele, PC de um amigo), incluindo o código de saída do PawnIO e a instalação por cima. Sem merge na main, push, tag ou release antes disso.
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
-- Suíte `unittest` para ping; sem manifesto de dependências ou build distribuível.
+- Suíte `unittest`; build distribuível na branch versao-1.0, sem teste real ainda.
 - Nenhuma tarefa funcional em andamento está registrada no repositório consultado.
 - Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.

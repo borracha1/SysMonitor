@@ -1,4 +1,4 @@
-Atualizado em 2026-10-25 (branch main; limites de temperatura e cores; sem commit)
+Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0 gerados, sem teste real)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -63,7 +63,7 @@ python3 create_shortcut.py
 - Suíte automatizada stdlib: `py -3.12 -m unittest discover -s tests -v` (na raiz, sem instalar pytest). Cobre coleta por destino, janela, alertas, recuperação e formatação. Usar `py -3.12`: é o Python do widget (Store) e o único com `psutil`; o `python` do PATH (3.14) não tem.
 - Compilação sintática: `py -3.12 -m py_compile` com todas as fontes `.py` da raiz (inclusive `ping_config.py`).
 - Suíte também cobre grupos por família/migração legada, troca/retorno/geração, persistência atômica, editor de quatro campos, marcadores, rádios e alinhamento/largura estável. Testes usam mocks/AST para não abrir o widget nem importar entradas Win32.
-- Não há CI, instalador, distribuição binária nem comando de build no Git.
+- Sem CI. Build do exe e do instalador: ver "Exe e instalador (1.0.0)" abaixo.
 - Verificação 2026-10-21: 62 testes aprovados (2,878 s), incluindo regressão Win32 com WindowFromPoint em pai Tk isolado, coleta/divisão/persistência/falha e três modos em Tk real. `py_compile`: 16 fontes (raiz + testes), OK. Leitura real GetIpStatisticsEx IPv4/IPv6 aprovada sem elevação. Nenhum teste usa a barra real ou grava o config.ini local; pendente conferência manual do Mateus.
 - Verificação tarefa A (2026-10-21): suíte completa com 73 testes em 3,513 s, OK; py_compile de 18 fontes (raiz + testes), OK; git diff --check, OK. Regressão 1920 escrita antes da produção falhou com widget [1087,1574] cobrindo ícones [668,1253] e passou após correção. Novos testes cobrem política/níveis, integração Win32/Tk isolada, snapshots e falhas UIA. Leitura UIA real do monitor principal aprovada sem elevação, sem reiniciar o widget; pendente teste visual do Mateus no monitor menor. Config local preservado por comparação SHA-256.
 - Diagnóstico existente: `python3 sensors.py`; as duas entradas devem ser verificadas manualmente em Windows.
@@ -72,3 +72,13 @@ python3 create_shortcut.py
 - Bandeja: conferir três ícones, fallback MEM, tooltips, clique esquerdo inofensivo e limpeza ao sair.
 - Nenhum aplicativo, teste de sensores, build ou instalação foi executado na tarefa de documentação.
 - Executado em 2026-10-08, em verificação de documentação: `python sensors.py` devolveu GPU `(52.0, 31.0)` e CPU `69.8`, confirmando NVML e LHM funcionais. O widget em si não foi aberto.
+
+## Exe e instalador (1.0.0)
+- Spec e plano: `docs/superpowers/specs/2026-10-26-exe-instalador-design.md` e `docs/superpowers/plans/2026-10-26-exe-instalador.md`.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` gera `dist/SysMonitor-Setup-<versão>.exe`; `-SomenteExe` para depois dos exes. Versão vem de `version.py`.
+- Etapas: venv `.venv-build` com `py -3.12` (Tk 8.6; não usar `C:\Python314`, Tk 9.0) e `requirements-build.txt` fixado; pré-gera `comtypes.gen` da UIA; PyInstaller pelo `SysMonitor.spec` (pasta única, `SysMonitor.exe` + `SysMonitor-Bandeja.exe`, ambos com console que o código esconde); `--verificar` nos dois exes; baixa o LHM 0.9.6 (`LibreHardwareMonitor.zip`, .NET 4.7.2) com SHA-256 fixado para `build/lhm`; ISCC do Inno Setup 6 (winget, escopo do usuário) com `installer/SysMonitor.iss`.
+- `--verificar` (nas duas entradas, `.py` ou exe): importa os módulos tardios, Tcl e (widget) a UIA, imprime versão, pasta de dados e se está congelado; sai 0 sem janela, mutex nem config. Não esconde o console.
+- Pasta de dados (`app_paths.data_dir()`): modo `.py` = raiz do projeto (igual a antes); exe = `%APPDATA%\SysMonitor` (config.ini, crash.log, sysmon.log).
+- Instalador (admin uma vez): baixa o PawnIO 2.2.0 do release oficial com SHA-256 e roda `-install -silent` se faltar; copia o LHM + `installer/LibreHardwareMonitor.config` e cria a tarefa `SysMonitor LHM` (via `installer/util-instalador.ps1`) se não houver LHM (8085 respondendo ou tarefa `\LibreHardwareMonitor`); grava `HKLM\Software\SysMonitor` (`Version`, `InstalledPawnIO`, `InstalledLHM`, `CreatedTask`), que o desinstalador usa para saber o que remover.
+- `build/`, `dist/` e `.venv-build/` ficam fora do Git. Arquivos `.ps1` só ASCII; `.iss` e `LEIA-ME.txt` em UTF-8 com BOM.
+- Verificação 2026-10-27: 147 testes OK; `build.ps1` completo saiu 0 (Inno 6.7.3); setup com 16.972.379 bytes, SHA-256 `07c6021ac770da1dc3e8e2b7432de72475db21ef6fa23d650e05e42719ae83d0`. Setup ainda não executado: teste real no Windows Sandbox pendente (roteiro no fim do plano).
