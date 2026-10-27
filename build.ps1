@@ -30,3 +30,27 @@ foreach ($exe in 'SysMonitor.exe', 'SysMonitor-Bandeja.exe') {
     }
 }
 if ($SomenteExe) { return }
+
+# 3. LibreHardwareMonitor 0.9.6 (official release, pinned SHA-256)
+$LhmUrl = 'https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip'
+$LhmSha256 = '086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001'
+$lhmZip = "$raiz\build\cache\LibreHardwareMonitor-0.9.6.zip"
+if (-not (Test-Path $lhmZip)) {
+    New-Item -ItemType Directory -Force (Split-Path $lhmZip) | Out-Null
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -UseBasicParsing -Uri $LhmUrl -OutFile $lhmZip
+}
+$hash = (Get-FileHash $lhmZip -Algorithm SHA256).Hash.ToLower()
+if ($hash -ne $LhmSha256) { Remove-Item $lhmZip; throw "LHM SHA-256 mismatch: $hash" }
+$lhmDir = "$raiz\build\lhm"
+if (Test-Path $lhmDir) { Remove-Item -Recurse -Force $lhmDir }
+Expand-Archive -Path $lhmZip -DestinationPath $lhmDir
+if (-not (Test-Path "$lhmDir\LibreHardwareMonitor.exe")) { throw 'LibreHardwareMonitor.exe missing from zip' }
+
+# 4. Inno Setup
+$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+          "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) { throw 'Inno Setup 6 not found: winget install -e --id JRSoftware.InnoSetup' }
+& $iscc "/DAppVersion=$versao" "$raiz\installer\SysMonitor.iss"; Check 'ISCC'
+Write-Host "OK: $raiz\dist\SysMonitor-Setup-$versao.exe"
