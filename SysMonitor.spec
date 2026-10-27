@@ -6,7 +6,7 @@
 from PyInstaller.utils.hooks import collect_submodules
 
 hidden = collect_submodules('comtypes.gen') + ['comtypes.client', 'usage_limits_ui',
-                                                'lhm_launcher', 'tkinter.messagebox',
+                                                'lhm_launcher', 'screen_side', 'tkinter.messagebox',
                                                 'tkinter.colorchooser']
 common = dict(pathex=[SPECPATH], hiddenimports=hidden, excludes=['tests', 'backup'])
 

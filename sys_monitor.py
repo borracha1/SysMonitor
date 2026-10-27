@@ -48,6 +48,7 @@ from ping_config import save_ping_settings, save_window_settings
 from net_split import PacketCounters, split_rates, net_column_width
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
 from taskbar_session import TaskbarSession
+from screen_side import screen_key, load_side, save_side, monitor_device
 from usage_limits import load_preferences, usage_color
 
 APP_NAME = "SysMonitor"
@@ -444,6 +445,7 @@ class TaskbarEmbedder:
         self.space_monitor = None
         self.widths = None
         self.width_provider = None
+        self.side_provider = None
         self.on_layout_change = None
         self._layout_key = None
         self._overflow_situations = set()
@@ -542,7 +544,8 @@ class TaskbarEmbedder:
                 right = snapshot.right[1]  # No TrayNotifyWnd on secondary bars.
             widths = self.width_provider() if self.width_provider else self.widths
             if widths is not None:
-                layout = choose_layout(snapshot, widths, right)
+                layout = choose_layout(snapshot, widths, right,
+                                       side=self.side_provider() if self.side_provider else 'auto')
                 key = (layout.side, layout.level)
                 self.width = layout.width
                 x = layout.x - tr.left
@@ -1005,6 +1008,7 @@ class MonitorWindow:
                                        on_height_change=self._layout_embedded,
                                        catcher_hwnd=catcher_hwnd, target_tray=target,
                                        managed_targets=getattr(self, 'session', None) is not None)
+        self.embedder.side_provider = self._taskbar_side
         self.embedder.space_monitor = getattr(self, 'space_monitor', None)
         self.embedder.width_provider = self._taskbar_widths
         self.embedder.on_layout_change = self._apply_space_level
@@ -1061,6 +1065,36 @@ class MonitorWindow:
         self.root.bind("<B1-Motion>", move)
         self.root.bind("<ButtonRelease-1>", release)
 
+    def _taskbar_screen_key(self):
+        embedder = getattr(self, 'embedder', None)
+        tray = embedder.tray if embedder is not None else None
+        if not tray:
+            return None
+        cached = getattr(self, '_taskbar_screen_cache', None)
+        if cached is None or cached[0] != tray:
+            cached = (tray, screen_key(monitor_device(tray)))
+            self._taskbar_screen_cache = cached
+        return cached[1]
+
+    def _taskbar_side(self):
+        key = self._taskbar_screen_key()
+        return load_side(self.full_cfg, key) if key is not None else 'auto'
+
+    def _select_taskbar_side(self, side):
+        key = self._taskbar_screen_key()
+        if key is None:
+            self._taskbar_side_var.set('auto')
+            return
+        previous = load_side(self.full_cfg, key)
+        try:
+            save_side(CONFIG_PATH, self.full_cfg, key, side)
+        except (OSError, configparser.Error) as exc:
+            self._taskbar_side_var.set(previous)
+            _log_event(f'taskbar side: save failed: {exc}')
+            return
+        self._taskbar_side_var.set(side)
+        self.embedder.reposition()
+
     def _bind_menu(self):
         # Right-click menu, scoped to this widget incarnation.
         menu = tk.Menu(self.root, tearoff=0)
@@ -1077,6 +1111,12 @@ class MonitorWindow:
                                      command=lambda mode=value: self._select_ping_mode(mode))
             menu.add_command(label="Configurar destinos…", command=self._edit_ping_targets)
             menu.add_separator()
+        if self.mode == 'taskbar':
+            self._taskbar_side_var = tk.StringVar(master=self.master, value='auto')
+            for title, side in (('Lado: Automático', 'auto'), ('Lado: Esquerda', 'left'),
+                                ('Lado: Direita', 'right')):
+                menu.add_radiobutton(label=title, value=side, variable=self._taskbar_side_var,
+                                     command=lambda value=side: self._select_taskbar_side(value))
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_command(label="Fechar", command=self.quit)
         self._lhm_menu_shown = 0
@@ -1093,6 +1133,11 @@ class MonitorWindow:
             from lhm_launcher import sync_menu
             self._lhm_menu_shown = sync_menu(menu, self.metrics.snapshot().get("lhm_reachable"),
                                              self._lhm_menu_shown, self._open_lhm)
+            if self.mode == 'taskbar':
+                self._taskbar_side_var.set(self._taskbar_side())
+                state = 'normal' if self._taskbar_screen_key() is not None else 'disabled'
+                for title in ('Lado: Automático', 'Lado: Esquerda', 'Lado: Direita'):
+                    menu.entryconfigure(title, state=state)
             menu.tk_popup(x, y)
 
         # Bound on the Toplevel (every child widget's bindtags include it),

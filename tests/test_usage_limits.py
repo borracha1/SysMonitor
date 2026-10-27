@@ -163,6 +163,7 @@ class UsageLimitsTests(unittest.TestCase):
                 ns['CONFIG_PATH'] = path
                 w = ns['MonitorWindow'].__new__(ns['MonitorWindow'])
                 w.master, w.root, w.full_cfg = root, tk.Toplevel(root), cfg
+                w.mode = "floating"
                 w.ping_enabled, w.ping_monitor = False, None
                 w._bind_menu()
                 menu = next(c for c in w.root.winfo_children() if isinstance(c, tk.Menu))

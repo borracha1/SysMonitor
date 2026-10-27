@@ -24,10 +24,15 @@ class Layout:
     overflow: bool = False
 
 
-def choose_layout(snapshot, widths, tray_right):
-    """Prefer fuller levels, trying right then left at each level."""
+def choose_layout(snapshot, widths, tray_right, side='auto'):
+    """Try the preferred side at every level, then the automatic policy."""
     if snapshot is None:
         return Layout('right', 0, tray_right - widths[0], widths[0])
+    if side in ('left', 'right'):
+        begin, end = getattr(snapshot, side)
+        for level, width in enumerate(widths):
+            if end - begin >= width:
+                return Layout(side, level, end - width if side == 'right' else begin, width)
     for level, width in enumerate(widths):
         for side in ('right', 'left'):
             begin, end = getattr(snapshot, side)

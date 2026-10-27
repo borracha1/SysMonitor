@@ -139,7 +139,9 @@ class GroupViewTests(unittest.TestCase):
         window.ping_monitor.set_groups(('1.1.1.1',), (), 'ipv4')
         window._bind_menu()
         menu = ns['tk'].Menu.return_value
-        radios = menu.add_radiobutton.call_args_list
+        radios = [c for c in menu.add_radiobutton.call_args_list
+                  if c.kwargs["value"] in ("auto", "ipv4", "ipv6")
+                  and not c.kwargs["label"].startswith("Lado:")]
         self.assertEqual([c.kwargs['label'] for c in radios], ['Automático', 'Só IPv4', 'Só IPv6'])
         self.assertEqual([c.kwargs['state'] for c in radios], ['normal', 'normal', 'disabled'])
         window._destroy = Mock()

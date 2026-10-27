@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock
 
 from taskbar_space import choose_layout
+from screen_side import screen_key, load_side, save_side, monitor_device
 from usage_limits import load_limits, load_preferences, usage_color, DEFAULT_LIMITS
 
 
@@ -20,6 +21,7 @@ def namespace() -> dict[str, Any]:
     nodes = tree.body[start:end+1]
     nodes += [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'MonitorWindow']
     ns = dict(ctypes=ctypes, wintypes=wintypes, tk=tk, _log_event=Mock(),
+              screen_key=screen_key, load_side=load_side, save_side=save_side, monitor_device=monitor_device,
               choose_layout=choose_layout, configparser=__import__('configparser'), Metrics=object,
               load_limits=load_limits, load_preferences=load_preferences, usage_color=usage_color, DEFAULT_LIMITS=DEFAULT_LIMITS)
     exec(compile(ast.Module(body=nodes, type_ignores=[]), 'sys_monitor.py', 'exec'), ns)

@@ -13,6 +13,24 @@ from test_taskbar_clicks import namespace
 
 
 class TaskbarSpaceRegression(unittest.TestCase):
+    def test_side_provider_overrides_auto_without_real_taskbar(self):
+        ns = namespace()
+        ns['_u32'] = Mock()
+        ns['_win_rect'] = {1: SimpleNamespace(left=0, top=1032, right=1920, bottom=1080)}.get
+        snap = SpaceSnapshot(1, (0, 1032, 1920, 1080), (10, 658), (1000, 1600))
+        embedder = ns['TaskbarEmbedder'](3, 487, catcher_hwnd=4)
+        self.assertIsNone(embedder.side_provider)
+        embedder.tray = 1
+        embedder.widths = (487, 388, 318)
+        embedder.space_monitor = SimpleNamespace(set_target=Mock(), snapshot=lambda: snap)
+        for side, expected in [('auto', 1113), ('left', 10)]:
+            embedder.side_provider = Mock(return_value=side)
+            ns['_u32'].SetWindowPos.reset_mock()
+            embedder.reposition()
+            embedder.side_provider.assert_called_once_with()
+            placements = [c.args for c in ns['_u32'].SetWindowPos.call_args_list if c.args[4] > 0]
+            self.assertEqual([(p[0], p[2]) for p in placements], [(3, expected), (4, expected)])
+
     def test_real_1920_widget_does_not_cover_icons(self):
         ns = namespace()
         ns['_u32'] = Mock()
@@ -38,6 +56,45 @@ class TaskbarSpaceRegression(unittest.TestCase):
 
 
 class LayoutPolicyTests(unittest.TestCase):
+    def test_forced_side_beats_other_full_side(self):
+        snap = SpaceSnapshot(1, (0, 0, 2000, 48), (10, 610), (1000, 1600))
+        for side, x in [('left', 10), ('right', 1113)]:
+            with self.subTest(side=side):
+                result = choose_layout(snap, (487, 388, 318), 1600, side=side)
+                self.assertEqual((result.side, result.level, result.x), (side, 0, x))
+
+    def test_forced_compact_before_auto(self):
+        for side in ('left', 'right'):
+            for space, level in [(400, 1), (320, 2)]:
+                with self.subTest(side=side, level=level):
+                    regions = dict(left=(10, 610), right=(1000, 1600))
+                    regions[side] = (10, 10 + space)
+                    snap = SpaceSnapshot(1, (0, 0, 2000, 48), **regions)
+                    result = choose_layout(snap, (487, 388, 318), 1600, side=side)
+                    self.assertEqual((result.side, result.level), (side, level))
+
+    def test_forced_unavailable_falls_back_to_auto(self):
+        for side in ('left', 'right'):
+            for other_space in (600, 0):
+                with self.subTest(side=side, other_space=other_space):
+                    regions = dict(left=(10, 10 + other_space), right=(1000, 1000 + other_space))
+                    regions[side] = (10, 10)
+                    snap = SpaceSnapshot(1, (0, 0, 2000, 48), **regions)
+                    self.assertEqual(choose_layout(snap, (487, 388, 318), 1600, side=side),
+                                     choose_layout(snap, (487, 388, 318), 1600))
+
+    def test_explicit_auto_and_invalid_preserve_existing_policy(self):
+        for left in (0, 320, 400, 600):
+            for right in (0, 320, 400, 600):
+                snap = SpaceSnapshot(1, (0, 0, 2000, 48), (10, 10 + left), (1000, 1000 + right))
+                for side in ('auto', 'invalid', None):
+                    with self.subTest(left=left, right=right, side=side):
+                        self.assertEqual(choose_layout(snap, (487, 388, 318), 1600, side=side),
+                                         choose_layout(snap, (487, 388, 318), 1600))
+        for side in ('auto', 'left', 'right', 'invalid'):
+            self.assertEqual(choose_layout(None, (487, 388, 318), 1600, side=side),
+                             choose_layout(None, (487, 388, 318), 1600))
+
     def test_full_left_beats_compact_right_secondary_bar(self):
         snap = SpaceSnapshot(2, (-1920, 1032, 0, 1080),
                              (-1910, -1262), (-657, -302))

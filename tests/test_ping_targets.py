@@ -257,6 +257,7 @@ class LifecycleTests(unittest.TestCase):
         for enabled, monitor, expected in [(True, Mock(), True), (False, Mock(), False), (True, None, False)]:
             fake_tk.reset_mock()
             window = cls.__new__(cls)
+            window.mode = "floating"
             window.root, window.master, window.ping_enabled, window.ping_monitor = Mock(), Mock(), enabled, monitor
             if monitor is not None:
                 monitor.groups = {'ipv4': ('1.1.1.1',), 'ipv6': ()}
