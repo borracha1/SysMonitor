@@ -131,6 +131,7 @@ Atualizado em 2026-10-27 (branch versao-1.0; pré-release v1.0.0-teste no ar; la
 ## Marco 2026-10-27 · lado do widget por tela (cc02a6a, versao-1.0, sem teste real)
 - Pedido do Mateus após o amigo testar a pré-release: menu de cada widget da barra com "Lado: Automático / Esquerda / Direita", valendo só para aquela tela. Chave da tela = nome do monitor (`\.\DISPLAY1` → `display1`, `screen_side.py`), gravada em `[taskbar_side]` do config.ini (`auto` remove a chave). Lado forçado tenta níveis 0–2 só naquele lado; sem espaço, cai no automático. `choose_layout(..., side=)`, `TaskbarEmbedder.side_provider`.
 - Hermes (GPT Sol) com TDD; revisado por Claude. Suíte 168 OK; build 0; setup SHA-256 `aa91fed80a1fc22818f25064f16d55d3c3b48680b0372c1630de2cc5876ea971`. Falta: teste real do Mateus nas duas telas.
+- Vídeos do amigo (27/10): nas barras dele com ícones alinhados à esquerda o "Lado" não fazia nada (região esquerda ≤ 0 → caía no automático). Regra nova aprovada (55eb637): Esquerda/Direita = lugar livre mais à esquerda/direita; tenta a região do lado escolhido nos níveis 0–2, depois a outra região encostada na borda pedida, depois o automático. Separador antes de "Fechar". Suíte 173 OK; setup SHA-256 `a6f0cde110158ccf665de9763f986f0df7dc1f770f4a7ce62b33a9b0dfafd64a`.
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
