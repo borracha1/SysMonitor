@@ -17,7 +17,7 @@ Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests 
 
 ## Estado
 Versão 1.0.0 (`version.py`) na `main` e publicada como release `v1.0.0` (setup no GitHub); `versao-1.0` mesclada.
-Última mudança funcional: lado do widget por tela com fonte menor (47f624a, 2026-10-28); detalhes em [estado.md](estado.md).
+Última mudança funcional: 1.0.1 (branch `versao-1.0.1`), lado escolhido manda, compactando e diminuindo a fonte antes de trocar de lado (3dc30c1, 2026-10-28); detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
