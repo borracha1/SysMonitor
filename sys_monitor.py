@@ -921,7 +921,8 @@ class MonitorWindow:
 
     def _taskbar_shrink(self):
         from taskbar_space import MIN_TASKBAR_FONT
-        return tuple((size, self._embedded_columns(0, self._taskbar_measure_font(size).measure)[1])
+        return tuple((size, tuple(self._embedded_columns(level, self._taskbar_measure_font(size).measure)[1]
+                                  for level in range(3)))
                      for size in range(self.cfg.getint("font_size") - 1, MIN_TASKBAR_FONT - 1, -1))
 
     def _apply_taskbar_font(self, size):

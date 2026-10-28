@@ -69,7 +69,8 @@ class TaskbarFontTests(unittest.TestCase):
         normal = w._taskbar_widths()
         shrink = w._taskbar_shrink()
         self.assertEqual([size for size, width in shrink], [7, 6])
-        for size, width in shrink:
+        for size, widths in shrink:
+            width = widths[0]
             snap = self.snapshot(width)
             self.monitor.snapshot.return_value = snap
             expected = choose_layout(snap, normal, self.bounds[2], side='right', shrink=shrink)
@@ -117,6 +118,62 @@ class TaskbarFontTests(unittest.TestCase):
         self.assertEqual(w.embed_width, normal[0])
         self.assertEqual(self.cfg['window']['font_size'], '8')
 
+    def test_bug_2026_10_28_shrink_measures_all_levels_without_touching_live_font(self):
+        w = self.window
+        live = (w.font.actual(), w._net_font.actual(), w.embed_width, w._space_level)
+        expected = tuple((size, tuple(w._embedded_columns(level, w._taskbar_measure_font(size).measure)[1]
+                                     for level in range(3))) for size in (7, 6))
+        with patch.object(w.font, 'measure', side_effect=AssertionError('live font measured')), \
+                patch.object(w.font, 'configure', side_effect=AssertionError('live font changed')):
+            self.assertEqual(w._taskbar_shrink(), expected)
+        self.assertEqual((w.font.actual(), w._net_font.actual(), w.embed_width, w._space_level), live)
+
+    def test_bug_2026_10_28_compact_font_six_matches_rendered_width_in_both_orders(self):
+        w = self.window
+        width = w._embedded_columns(2, w._taskbar_measure_font(6).measure)[1]
+        for font_first in (True, False):
+            with self.subTest(font_first=font_first):
+                w._apply_taskbar_font(None)
+                w._apply_space_level(0)
+                if font_first:
+                    w._apply_taskbar_font(6)
+                    w._apply_space_level(2)
+                else:
+                    w._apply_space_level(2)
+                    w._apply_taskbar_font(6)
+                self.assertEqual(w.embed_width, width)
+                self.assertEqual(w.lbl_mem.winfo_manager(), '')
+                self.assertFalse(w._net_active)
+
+    def test_bug_2026_10_28_compact_font_six_reposition_is_stable(self):
+        w = self.window
+        normal = w._taskbar_widths()
+        shrink = w._taskbar_shrink()
+        width = w._embedded_columns(2, w._taskbar_measure_font(6).measure)[1]
+        snap = self.snapshot(width)
+        self.monitor.snapshot.return_value = snap
+        expected = choose_layout(snap, normal, self.bounds[2], side='right', shrink=shrink)
+        self.assertEqual((expected.side, expected.level, expected.font_size, expected.width),
+                         ('right', 2, 6, width))
+        with patch.object(w, '_apply_taskbar_font', wraps=w._apply_taskbar_font) as apply:
+            self.emb.on_font_change = apply
+            self.emb.reposition()
+            self.master.update()
+            self.assertEqual((w.embed_width, self.emb.width), (expected.width, expected.width))
+            self.assertEqual(self.emb._layout_key, ('right', 2, 6))
+            for hwnd in (self.emb.hwnd, self.emb.catcher_hwnd):
+                rect = self.ns['_win_rect'](hwnd)
+                self.assertEqual((rect.left, rect.right), (expected.x, expected.x+expected.width))
+            before_logs = self.ns['_log_event'].call_count
+            with patch.object(w.font, 'configure', wraps=w.font.configure) as configure:
+                self.emb.reposition()
+                configure.assert_not_called()
+            apply.assert_called_once_with(6)
+            self.assertEqual(choose_layout(snap, w._taskbar_widths(), self.bounds[2],
+                                           side='right', shrink=w._taskbar_shrink()), expected)
+            self.assertEqual(self.ns['_log_event'].call_count, before_logs)
+            self.assertEqual((w.embed_width, self.emb.width), (expected.width, expected.width))
+
     def test_measurement_fonts_cached_independent_and_minimum_respected(self):
         w = self.window
         normal = w._taskbar_widths()
@@ -136,7 +193,7 @@ class TaskbarFontTests(unittest.TestCase):
         for side, missing in [('auto', False), ('invalid', False), ('right', True)]:
             with self.subTest(side=side, missing=missing):
                 self.emb.side_provider = lambda: 'right'
-                width = w._taskbar_shrink()[-1][1]
+                width = w._taskbar_shrink()[-1][1][0]
                 self.monitor.snapshot.return_value = self.snapshot(width)
                 self.emb.reposition()
                 self.assertEqual(w.font.cget('size'), 6)

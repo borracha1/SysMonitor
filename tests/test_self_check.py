@@ -16,7 +16,7 @@ class RunSelfCheckTests(unittest.TestCase):
         rc = self_check.run_self_check('widget', ('json',), uia=False, out=lines.append)
         self.assertEqual(rc, 0)
         text = '\n'.join(lines)
-        self.assertIn('SysMonitor 1.0.0 (widget)', text)
+        self.assertIn('SysMonitor 1.0.1 (widget)', text)
         self.assertIn('dados: ', text)
         self.assertIn('congelado: False', text)
 
@@ -40,12 +40,12 @@ class EntryPointTests(unittest.TestCase):
     def test_widget_entry(self):
         result = self.run_entry('sys_monitor.py')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('SysMonitor 1.0.0 (widget)', result.stdout)
+        self.assertIn('SysMonitor 1.0.1 (widget)', result.stdout)
 
     def test_tray_entry(self):
         result = self.run_entry('tray_monitor.py')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('SysMonitor 1.0.0 (bandeja)', result.stdout)
+        self.assertIn('SysMonitor 1.0.1 (bandeja)', result.stdout)
 
     def test_console_is_not_hidden_when_self_checking(self):
         # Foco de revisão 2: hiding the console on import would hide the

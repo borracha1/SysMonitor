@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import threading
 import time
 
-from taskbar_space import SpaceSnapshot, TaskbarSpaceMonitor, build_regions, choose_layout
+from taskbar_space import Layout, SpaceSnapshot, TaskbarSpaceMonitor, build_regions, choose_layout
 
 from test_taskbar_clicks import namespace
 
@@ -59,7 +59,7 @@ class LayoutPolicyTests(unittest.TestCase):
     def test_odyssey_friend_video_2026_10_28_right_shrinks_before_left(self):
         snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1300, 1700))
         result = choose_layout(snap, (487, 388, 318), 1700, side='right',
-                               shrink=((7, 426), (6, 365)))
+                               shrink=((7, (426, 340, 278)), (6, (365, 291, 238))))
         self.assertEqual((result.side, result.level, result.font_size, result.x, result.width),
                          ('right', 0, 6, 1335, 365))
 
@@ -73,7 +73,7 @@ class LayoutPolicyTests(unittest.TestCase):
         for side, x in [('left', 1114), ('right', 1157)]:
             with self.subTest(side=side):
                 result = choose_layout(snap, (620, 500, 400), 1700, side=side,
-                                       shrink=((7, 543), (6, 465)))
+                                       shrink=((7, (543, 438, 350)), (6, (465, 375, 300))))
                 self.assertEqual((result.side, result.level, result.font_size, result.x),
                                  ('right', 0, 7, x))
 
@@ -81,7 +81,7 @@ class LayoutPolicyTests(unittest.TestCase):
         snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1000, 1700))
         for side, x in [('left', 10), ('right', 1213)]:
             result = choose_layout(snap, (487, 388, 318), 1700, side=side,
-                                   shrink=((7, 426), (6, 365)))
+                                   shrink=((7, (426, 340, 278)), (6, (365, 291, 238))))
             self.assertEqual((result.side, result.level, result.font_size, result.x),
                              (side, 0, None, x))
 
@@ -91,24 +91,37 @@ class LayoutPolicyTests(unittest.TestCase):
             for side in ('auto', 'invalid', None, 'left' if snapshot is None else 'auto',
                          'right' if snapshot is None else 'auto'):
                 self.assertEqual(choose_layout(snapshot, (487, 388, 318), 1700, side=side,
-                                               shrink=((7, 426), (6, 365))),
+                                               shrink=((7, (426, 340, 278)), (6, (365, 291, 238)))),
                                  choose_layout(snapshot, (487, 388, 318), 1700, side=side))
 
-    def test_below_minimum_font_capacity_preserves_old_compact_and_overflow(self):
-        for left, right in [((10, 350), (1400, 1700)), ((10, -10), (1400, 1700)),
-                            ((10, -10), (1600, 1700))]:
-            snap = SpaceSnapshot(1, (0, 0, 1920, 48), left, right)
-            for side in ('left', 'right'):
-                self.assertEqual(choose_layout(snap, (487, 388, 318), 1700, side=side,
-                                               shrink=((7, 426), (6, 365))),
-                                 choose_layout(snap, (487, 388, 318), 1700, side=side))
+    def test_bug_2026_10_28_right_compact_smaller_font_stays_in_negative_region(self):
+        snap = SpaceSnapshot(1, (-1920, 1032, 0, 1080), (-1910, -1284), (-635, -362))
+        shrink = ((7, (318, 318, 264)), (6, (281, 281, 233)))
+        self.assertEqual(choose_layout(snap, (388, 388, 322), -362, side='right', shrink=shrink),
+                         Layout('right', 2, -362-264, 264, font_size=7))
+        self.assertEqual(choose_layout(snap, (388, 388, 322), -362, side='left', shrink=shrink),
+                         Layout('left', 0, -1910, 388))
 
-    def test_opposite_complete_normal_beats_requested_compact_when_minimum_fails(self):
-        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1360, 1700))
-        result = choose_layout(snap, (487, 388, 318), 1700, side='right',
-                               shrink=((7, 426), (6, 365)))
-        self.assertEqual((result.side, result.level, result.font_size, result.x),
-                         ('left', 0, None, 171))
+    def test_bug_2026_10_28_other_region_only_after_smallest_compact_fails(self):
+        shrink = ((7, (426, 340, 278)), (6, (365, 291, 238)))
+        for side in ('left', 'right'):
+            other = 'right' if side == 'left' else 'left'
+            for other_space, level, size, width in ((600, 0, None, 487), (400, 0, 6, 365),
+                                                    (250, 2, 6, 238)):
+                with self.subTest(side=side, other_space=other_space):
+                    regions = {side: (10, 247), other: (1000, 1000+other_space)}
+                    snap = SpaceSnapshot(1, (0, 0, 1920, 48), **regions)
+                    expected_x = 1000 if side == 'left' else 1000+other_space-width
+                    self.assertEqual(choose_layout(snap, (487, 388, 318), 1700,
+                                                   side=side, shrink=shrink),
+                                     Layout(other, level, expected_x, width, font_size=size))
+
+    def test_bug_2026_10_28_no_region_fits_even_smallest_compact_preserves_overflow(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 247), (1500, 1700))
+        for side in ('left', 'right'):
+            self.assertEqual(choose_layout(snap, (487, 388, 318), 1700, side=side,
+                                           shrink=((7, (426, 340, 278)), (6, (365, 291, 238)))),
+                             Layout('right', 2, 1382, 318, overflow=True))
 
     def test_left_aligned_taskbar_friend_video_2026_10_27(self):
         """Barra alinhada à esquerda, vídeo do amigo 2026-10-27."""
@@ -153,8 +166,8 @@ class LayoutPolicyTests(unittest.TestCase):
                 result = choose_layout(snap, (487, 388, 318), 1600, side=side)
                 self.assertEqual((result.side, result.level, result.x), (side, 0, x))
 
-    def test_opposite_full_before_forced_compact(self):
-        # New policy prefers full content in the other region even without shrink candidates.
+    def test_bug_2026_10_28_forced_compact_before_opposite_full(self):
+        # The requested region wins, even if the other region fits complete content.
         for side in ('left', 'right'):
             for space in (400, 320):
                 with self.subTest(side=side, space=space):
@@ -162,10 +175,10 @@ class LayoutPolicyTests(unittest.TestCase):
                     regions[side] = (10, 10 + space)
                     snap = SpaceSnapshot(1, (0, 0, 2000, 48), **regions)
                     result = choose_layout(snap, (487, 388, 318), 1600, side=side)
-                    other = 'right' if side == 'left' else 'left'
-                    begin, end = regions[other]
+                    level, width = (1, 388) if space == 400 else (2, 318)
+                    begin, end = regions[side]
                     self.assertEqual((result.side, result.level, result.x, result.font_size),
-                                     (other, 0, begin if side == 'left' else end-487, None))
+                                     (side, level, begin if side == 'left' else end-width, None))
 
     def test_forced_unavailable_uses_other_region_then_auto_overflow(self):
         for side in ('left', 'right'):
