@@ -445,8 +445,10 @@ class TaskbarEmbedder:
         self.space_monitor = None
         self.widths = None
         self.width_provider = None
+        self.shrink_provider = None
         self.side_provider = None
         self.on_layout_change = None
+        self.on_font_change = None
         self._layout_key = None
         self._overflow_situations = set()
         self._positioning = False
@@ -544,13 +546,20 @@ class TaskbarEmbedder:
                 right = snapshot.right[1]  # No TrayNotifyWnd on secondary bars.
             widths = self.width_provider() if self.width_provider else self.widths
             if widths is not None:
-                layout = choose_layout(snapshot, widths, right,
-                                       side=self.side_provider() if self.side_provider else 'auto')
-                key = (layout.side, layout.level)
+                side = self.side_provider() if self.side_provider else 'auto'
+                shrink = self.shrink_provider() if self.shrink_provider else ()
+                layout = choose_layout(snapshot, widths, right, side=side, shrink=shrink)
+                key = (layout.side, layout.level, layout.font_size)
                 self.width = layout.width
                 x = layout.x - tr.left
                 if key != self._layout_key:
+                    previous = self._layout_key
                     self._layout_key = key
+                    regions = (snapshot.left, snapshot.right) if snapshot is not None else None
+                    _log_event(f'taskbar layout: side={side} regions={regions} widths={widths} '
+                               f'shrink={shrink} layout={layout}')
+                    if self.on_font_change and (previous is None or previous[2] != layout.font_size):
+                        self.on_font_change(layout.font_size)
                     if self.on_layout_change:
                         self.on_layout_change(layout.level)
                 if layout.overflow and snapshot is not None:
@@ -870,15 +879,15 @@ class MonitorWindow:
         self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
         self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
 
-    def _embedded_columns(self, level):
-        measure = self.font.measure
+    def _embedded_columns(self, level, measure=None):
+        if measure is None:
+            measure = self.font.measure
         pad, gap = 4, 10
         split = getattr(self, '_net_available', getattr(self, '_net_active', False)) and level == 0
         w_net = net_column_width(measure, split)
         w_ping = ping_column_width(
             measure, self.ping_groups[self._ping_layout_family], self.ping_timeout_ms
         ) if self.ping_enabled else 0
-        self._ping_marker_width = measure("v6·A ")
         w_hw = max(measure("CPU 100% 100°"), measure("GPU 100% 100°"))
         w_mem = measure("MEM 100%")
         w_st = measure("⚠") + 2
@@ -895,9 +904,38 @@ class MonitorWindow:
 
     def _calculate_embedded_columns(self):
         self._cols, self.embed_width = self._embedded_columns(getattr(self, '_space_level', 0))
+        self._ping_marker_width = self.font.measure("v6·A ")
+
+    def _taskbar_measure_font(self, size):
+        # Never measure candidates with the live font: it may already be shrunk.
+        if not hasattr(self, '_taskbar_measure_fonts'):
+            self._taskbar_measure_fonts = {}
+        if size not in self._taskbar_measure_fonts:
+            self._taskbar_measure_fonts[size] = tkfont.Font(
+                root=self.root, family="Segoe UI", size=size)
+        return self._taskbar_measure_fonts[size]
 
     def _taskbar_widths(self):
-        return tuple(self._embedded_columns(level)[1] for level in range(3))
+        measure = self._taskbar_measure_font(self.cfg.getint("font_size")).measure
+        return tuple(self._embedded_columns(level, measure)[1] for level in range(3))
+
+    def _taskbar_shrink(self):
+        from taskbar_space import MIN_TASKBAR_FONT
+        return tuple((size, self._embedded_columns(0, self._taskbar_measure_font(size).measure)[1])
+                     for size in range(self.cfg.getint("font_size") - 1, MIN_TASKBAR_FONT - 1, -1))
+
+    def _apply_taskbar_font(self, size):
+        size = self.cfg.getint("font_size") if size is None else size
+        if self.font.cget('size') == size:
+            return
+        self.font.configure(size=size)
+        self._line_h = self.font.metrics("linespace")
+        if hasattr(self, '_net_font'):
+            self._net_font.configure(size=size)
+        self._calculate_embedded_columns()
+        self._layout_embedded(self.root.winfo_height())
+        if hasattr(self, '_last_metrics'):
+            self._update_net_split(self._last_metrics)
 
     def _apply_space_level(self, level):
         if level == self._space_level:
@@ -1011,6 +1049,8 @@ class MonitorWindow:
         self.embedder.side_provider = self._taskbar_side
         self.embedder.space_monitor = getattr(self, 'space_monitor', None)
         self.embedder.width_provider = self._taskbar_widths
+        self.embedder.shrink_provider = self._taskbar_shrink
+        self.embedder.on_font_change = self._apply_taskbar_font
         self.embedder.on_layout_change = self._apply_space_level
         if not self.embedder.embed():
             self.embed_failed = True
@@ -1372,6 +1412,7 @@ class MonitorWindow:
         self.font = None
         self._ping_font = None
         self._net_font = None
+        self._taskbar_measure_fonts = {}
         self._net_cells = []
         if hasattr(self, "_net_mode_var"):
             del self._net_mode_var

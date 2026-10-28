@@ -22,14 +22,25 @@ class Layout:
     x: int
     width: int
     overflow: bool = False
+    font_size: int | None = None
 
 
-def choose_layout(snapshot, widths, tray_right, side='auto'):
-    """Try both regions at every level, aligned to the requested edge, then auto."""
+MIN_TASKBAR_FONT = 6
+
+
+def choose_layout(snapshot, widths, tray_right, side='auto', shrink=()):
+    """Forced edges prefer complete content, shrinking before changing region."""
     if snapshot is None:
         return Layout('right', 0, tray_right - widths[0], widths[0])
     if side in ('left', 'right'):
-        for region in (side, 'right' if side == 'left' else 'left'):
+        regions = (side, 'right' if side == 'left' else 'left')
+        for region in regions:
+            begin, end = getattr(snapshot, region)
+            for size, width in ((None, widths[0]), *shrink):
+                if end - begin >= width:
+                    return Layout(region, 0, end - width if side == 'right' else begin,
+                                  width, font_size=size)
+        for region in regions:
             begin, end = getattr(snapshot, region)
             for level, width in enumerate(widths):
                 if end - begin >= width:

@@ -56,6 +56,60 @@ class TaskbarSpaceRegression(unittest.TestCase):
 
 
 class LayoutPolicyTests(unittest.TestCase):
+    def test_odyssey_friend_video_2026_10_28_right_shrinks_before_left(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1300, 1700))
+        result = choose_layout(snap, (487, 388, 318), 1700, side='right',
+                               shrink=((7, 426), (6, 365)))
+        self.assertEqual((result.side, result.level, result.font_size, result.x, result.width),
+                         ('right', 0, 6, 1335, 365))
+
+    def test_left_aligned_friend_video_2026_10_28_complete_first_fitting_font(self):
+        els = [('StartButton', 'x', (0, 0, 48, 48), 1)] + [
+            ('', 'Taskbar.TaskListButtonAutomationPeer',
+             (48+i*44, 0, 92+i*44, 48), 1) for i in range(24)
+        ] + [('', 'SystemTray.X', (1700, 0, 1920, 48), 1)]
+        snap = build_regions(1, (0, 0, 1920, 48), els)
+        self.assertEqual(snap.right, (1114, 1700))
+        for side, x in [('left', 1114), ('right', 1157)]:
+            with self.subTest(side=side):
+                result = choose_layout(snap, (620, 500, 400), 1700, side=side,
+                                       shrink=((7, 543), (6, 465)))
+                self.assertEqual((result.side, result.level, result.font_size, result.x),
+                                 ('right', 0, 7, x))
+
+    def test_forced_full_normal_font_has_priority_over_shrink(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1000, 1700))
+        for side, x in [('left', 10), ('right', 1213)]:
+            result = choose_layout(snap, (487, 388, 318), 1700, side=side,
+                                   shrink=((7, 426), (6, 365)))
+            self.assertEqual((result.side, result.level, result.font_size, result.x),
+                             (side, 0, None, x))
+
+    def test_auto_invalid_and_missing_snapshot_ignore_shrink(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1300, 1700))
+        for snapshot in (snap, None):
+            for side in ('auto', 'invalid', None, 'left' if snapshot is None else 'auto',
+                         'right' if snapshot is None else 'auto'):
+                self.assertEqual(choose_layout(snapshot, (487, 388, 318), 1700, side=side,
+                                               shrink=((7, 426), (6, 365))),
+                                 choose_layout(snapshot, (487, 388, 318), 1700, side=side))
+
+    def test_below_minimum_font_capacity_preserves_old_compact_and_overflow(self):
+        for left, right in [((10, 350), (1400, 1700)), ((10, -10), (1400, 1700)),
+                            ((10, -10), (1600, 1700))]:
+            snap = SpaceSnapshot(1, (0, 0, 1920, 48), left, right)
+            for side in ('left', 'right'):
+                self.assertEqual(choose_layout(snap, (487, 388, 318), 1700, side=side,
+                                               shrink=((7, 426), (6, 365))),
+                                 choose_layout(snap, (487, 388, 318), 1700, side=side))
+
+    def test_opposite_complete_normal_beats_requested_compact_when_minimum_fails(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 658), (1360, 1700))
+        result = choose_layout(snap, (487, 388, 318), 1700, side='right',
+                               shrink=((7, 426), (6, 365)))
+        self.assertEqual((result.side, result.level, result.font_size, result.x),
+                         ('left', 0, None, 171))
+
     def test_left_aligned_taskbar_friend_video_2026_10_27(self):
         """Barra alinhada à esquerda, vídeo do amigo 2026-10-27."""
         els = [('StartButton', 'x', (0, 0, 48, 48), 1)] + [
@@ -99,15 +153,19 @@ class LayoutPolicyTests(unittest.TestCase):
                 result = choose_layout(snap, (487, 388, 318), 1600, side=side)
                 self.assertEqual((result.side, result.level, result.x), (side, 0, x))
 
-    def test_forced_compact_before_auto(self):
+    def test_opposite_full_before_forced_compact(self):
+        # New policy prefers full content in the other region even without shrink candidates.
         for side in ('left', 'right'):
-            for space, level in [(400, 1), (320, 2)]:
-                with self.subTest(side=side, level=level):
+            for space in (400, 320):
+                with self.subTest(side=side, space=space):
                     regions = dict(left=(10, 610), right=(1000, 1600))
                     regions[side] = (10, 10 + space)
                     snap = SpaceSnapshot(1, (0, 0, 2000, 48), **regions)
                     result = choose_layout(snap, (487, 388, 318), 1600, side=side)
-                    self.assertEqual((result.side, result.level), (side, level))
+                    other = 'right' if side == 'left' else 'left'
+                    begin, end = regions[other]
+                    self.assertEqual((result.side, result.level, result.x, result.font_size),
+                                     (other, 0, begin if side == 'left' else end-487, None))
 
     def test_forced_unavailable_uses_other_region_then_auto_overflow(self):
         for side in ('left', 'right'):
@@ -283,7 +341,10 @@ class TaskbarSpaceIntegrationTests(unittest.TestCase):
                 monitor.snapshot.return_value = snap
                 window._maintain_position()
                 self.assertEqual(window._space_level, 0)
-            self.assertEqual(ns['_log_event'].call_count, 2)  # Initial embed + one overflow.
+            logs = [call.args[0] for call in ns['_log_event'].call_args_list]
+            self.assertEqual(sum(text.startswith('taskbar layout:') for text in logs), 9)
+            self.assertEqual(sum('no layout fits' in text for text in logs), 1)
+            self.assertEqual(sum(text.startswith('embedded into') for text in logs), 1)
         finally:
             window._destroy()
             master.destroy()
