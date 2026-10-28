@@ -1,4 +1,4 @@
-Atualizado em 2026-10-27 (branch versao-1.0; pré-release v1.0.0-teste no ar; lado por tela em cc02a6a, sem teste real)
+Atualizado em 2026-10-28 (versão 1.0.0 na main; release oficial v1.0.0)
 
 # Estado e histórico
 ## Base documentada
@@ -127,6 +127,7 @@ Atualizado em 2026-10-27 (branch versao-1.0; pré-release v1.0.0-teste no ar; la
   - Backup: n/a (só preferências). Alertas de cota: n/a (sem serviço pago). Privacidade: nada é coletado nem enviado.
   - Pendente: assinatura de código (setup e exes sem Authenticode; o Smart App Control ligado bloqueia). Checksum SHA-256 publicado junto da release.
 - Mateus aprovou em 27/10 publicar antes do fim do teste para um amigo baixar: pré-release `v1.0.0-teste` a partir da `versao-1.0`, sem merge na main. Release oficial depois do teste do amigo.
+- Release oficial v1.0.0 (28/10, aprovada pelo Mateus: "go ahead"): seção A reconferida — gitleaks sem vazamentos no histórico inteiro; `pip-audit -r requirements-build.txt` sem vulnerabilidades; código novo (lado por tela, fonte menor) só lê/grava `[taskbar_side]` com valores validados e loga regiões/larguras, sem dado sensível. Pendente igual: assinatura de código. Setup publicado: SHA-256 `7c810feaa959fdf15d8dd2687fcc1fdf5386794c1f51e7d4aa55e8b6fc6f393b`. `versao-1.0` mesclada na `main` (fast-forward).
 
 ## Marco 2026-10-27 · lado do widget por tela (cc02a6a, versao-1.0, sem teste real)
 - Pedido do Mateus após o amigo testar a pré-release: menu de cada widget da barra com "Lado: Automático / Esquerda / Direita", valendo só para aquela tela. Chave da tela = nome do monitor (`\.\DISPLAY1` → `display1`, `screen_side.py`), gravada em `[taskbar_side]` do config.ini (`auto` remove a chave). Lado forçado tenta níveis 0–2 só naquele lado; sem espaço, cai no automático. `choose_layout(..., side=)`, `TaskbarEmbedder.side_provider`.
