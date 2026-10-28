@@ -1118,6 +1118,7 @@ class MonitorWindow:
                 menu.add_radiobutton(label=title, value=side, variable=self._taskbar_side_var,
                                      command=lambda value=side: self._select_taskbar_side(value))
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
+        menu.add_separator()
         menu.add_command(label="Fechar", command=self.quit)
         self._lhm_menu_shown = 0
 

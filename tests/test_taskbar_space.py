@@ -56,6 +56,42 @@ class TaskbarSpaceRegression(unittest.TestCase):
 
 
 class LayoutPolicyTests(unittest.TestCase):
+    def test_left_aligned_taskbar_friend_video_2026_10_27(self):
+        """Barra alinhada à esquerda, vídeo do amigo 2026-10-27."""
+        els = [('StartButton', 'x', (0, 0, 48, 48), 1)] + [
+            ('', 'Taskbar.TaskListButtonAutomationPeer',
+             (48+i*44, 0, 92+i*44, 48), 1) for i in range(24)
+        ] + [('', 'SystemTray.X', (1700, 0, 1920, 48), 1)]
+        snap = build_regions(1, (0, 0, 1920, 48), els)
+        assert snap is not None
+        self.assertEqual((snap.left, snap.right), ((10, -10), (1114, 1700)))
+        for side, x in [('left', 1114), ('right', 1213), ('auto', 1213)]:
+            with self.subTest(side=side):
+                result = choose_layout(snap, (487, 388, 318), 1700, side=side)
+                self.assertEqual((result.x, result.side, result.level, result.overflow),
+                                 (x, 'right', 0, False))
+
+    def test_right_uses_rightmost_space_in_left_region_when_right_unavailable(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, 610), (1700, 1700))
+        result = choose_layout(snap, (487, 388, 318), 1700, side='right')
+        self.assertEqual((result.x, result.side, result.level, result.overflow),
+                         (123, 'left', 0, False))
+
+    def test_left_uses_begin_of_right_region_at_compact_level(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, -10), (1300, 1700))
+        result = choose_layout(snap, (487, 388, 318), 1700, side='left')
+        self.assertEqual((result.x, result.side, result.level, result.overflow),
+                         (1300, 'right', 1, False))
+
+    def test_forced_sides_without_any_space_preserve_auto_overflow(self):
+        snap = SpaceSnapshot(1, (0, 0, 1920, 48), (10, -10), (1500, 1700))
+        automatic = choose_layout(snap, (487, 388, 318), 1700)
+        self.assertTrue(automatic.overflow)
+        for side in ('left', 'right'):
+            with self.subTest(side=side):
+                self.assertEqual(choose_layout(snap, (487, 388, 318), 1700, side=side),
+                                 automatic)
+
     def test_forced_side_beats_other_full_side(self):
         snap = SpaceSnapshot(1, (0, 0, 2000, 48), (10, 610), (1000, 1600))
         for side, x in [('left', 10), ('right', 1113)]:
@@ -73,15 +109,21 @@ class LayoutPolicyTests(unittest.TestCase):
                     result = choose_layout(snap, (487, 388, 318), 1600, side=side)
                     self.assertEqual((result.side, result.level), (side, level))
 
-    def test_forced_unavailable_falls_back_to_auto(self):
+    def test_forced_unavailable_uses_other_region_then_auto_overflow(self):
         for side in ('left', 'right'):
             for other_space in (600, 0):
                 with self.subTest(side=side, other_space=other_space):
                     regions = dict(left=(10, 10 + other_space), right=(1000, 1000 + other_space))
                     regions[side] = (10, 10)
                     snap = SpaceSnapshot(1, (0, 0, 2000, 48), **regions)
-                    self.assertEqual(choose_layout(snap, (487, 388, 318), 1600, side=side),
-                                     choose_layout(snap, (487, 388, 318), 1600))
+                    result = choose_layout(snap, (487, 388, 318), 1600, side=side)
+                    if other_space:
+                        other = 'right' if side == 'left' else 'left'
+                        begin, end = regions[other]
+                        self.assertEqual((result.side, result.level, result.x, result.overflow),
+                                         (other, 0, begin if side == 'left' else end - 487, False))
+                    else:
+                        self.assertEqual(result, choose_layout(snap, (487, 388, 318), 1600))
 
     def test_explicit_auto_and_invalid_preserve_existing_policy(self):
         for left in (0, 320, 400, 600):

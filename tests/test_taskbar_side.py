@@ -30,6 +30,23 @@ class TaskbarSideMenuTests(unittest.TestCase):
         window.session = Mock()
         return window
 
+    def test_separator_immediately_before_close_in_every_mode(self):
+        for mode in ('taskbar', 'floating', 'docked'):
+            for ping_enabled in (False, True):
+                with self.subTest(mode=mode, ping_enabled=ping_enabled):
+                    self.ns['tk'].reset_mock()
+                    self.window.mode = mode
+                    self.window.ping_enabled = ping_enabled
+                    self.window.ping_monitor = SimpleNamespace(
+                        mode='auto', groups={'ipv4': ['1.1.1.1'], 'ipv6': []})
+                    self.window._bind_menu()
+                    menu = self.ns['tk'].Menu.return_value
+                    entries = [c for c in menu.method_calls if c[0].startswith('add_')]
+                    self.assertEqual(entries[-1][0], 'add_command')
+                    self.assertEqual(entries[-1].kwargs['label'], 'Fechar')
+                    self.assertEqual(entries[-2][0], 'add_separator')
+                    self.assertEqual(entries[-3].kwargs['label'], 'Configurar limites de uso…')
+
     def test_menu_options_and_selection_save_only_this_widget(self):
         other = self.make_window(202)
         self.window._bind_menu()

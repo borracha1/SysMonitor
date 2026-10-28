@@ -265,7 +265,7 @@ class LifecycleTests(unittest.TestCase):
             labels = [call.kwargs['label'] for call in fake_tk.Menu.return_value.add_command.call_args_list]
             self.assertEqual('Configurar destinos…' in labels, expected)
             self.assertEqual(labels[-1], 'Fechar')
-            self.assertEqual(fake_tk.Menu.return_value.add_separator.call_count, 1 + int(expected))
+            self.assertEqual(fake_tk.Menu.return_value.add_separator.call_count, 2 + int(expected))
             fake_tk.Menu.return_value.add_checkbutton.assert_called_once()
             self.assertEqual(fake_tk.Menu.return_value.add_checkbutton.call_args.kwargs['label'],
                              'Separar IPv4/IPv6 (estimado)')
