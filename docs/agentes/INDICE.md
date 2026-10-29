@@ -1,4 +1,4 @@
-Atualizado em 2026-10-28 (versão 1.0.0 na main; release v1.0.0)
+Atualizado em 2026-10-29 (versão 1.0.1 na main; release oficial v1.0.1)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -16,8 +16,8 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Versão 1.0.0 (`version.py`) na `main` e publicada como release `v1.0.0` (setup no GitHub); `versao-1.0` mesclada.
-Última mudança funcional: 1.0.1 (branch `versao-1.0.1`), lado escolhido manda, compactando e diminuindo a fonte antes de trocar de lado (3dc30c1, 2026-10-28); detalhes em [estado.md](estado.md).
+Versão 1.0.1 (`version.py`) na `main` e publicada como release oficial `v1.0.1` (setup no GitHub); `versao-1.0.1` mesclada.
+Última mudança funcional: lado escolhido manda, compactando e diminuindo a fonte antes de trocar de lado (3dc30c1, 2026-10-28); detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |

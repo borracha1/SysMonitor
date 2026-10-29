@@ -1,4 +1,4 @@
-Atualizado em 2026-10-28 (versão 1.0.0 na main; release oficial v1.0.0)
+Atualizado em 2026-10-29 (versão 1.0.1 na main; release oficial v1.0.1)
 
 # Estado e histórico
 ## Base documentada
@@ -142,6 +142,7 @@ Atualizado em 2026-10-28 (versão 1.0.0 na main; release oficial v1.0.0)
 - Hermes (GPT Sol) com TDD; revisado e conferido pelo Claude: 186 testes OK. Substituídos por contrariar a regra: `test_opposite_full_before_forced_compact`, `test_opposite_complete_normal_beats_requested_compact_when_minimum_fails`, `test_below_minimum_font_capacity_preserves_old_compact_and_overflow`. Setup `SysMonitor-Setup-1.0.1.exe`, SHA-256 `bb51f1e27c273f43fc0bd332d2504dae45a8d631368ffb72a2c2e712a3b33f73`.
 - Segurança (seção A) para a pré-release `v1.0.1-teste`: gitleaks sem vazamentos (33 commits); `pip-audit -r requirements-build.txt` sem vulnerabilidades; dependências inalteradas; mudança só na política de layout, sem rede nem dado novo. Pendente igual: assinatura de código; SHA-256 publicado na release.
 - Mateus pediu (28/10) publicar para o amigo testar: pré-release `v1.0.1-teste` a partir da `versao-1.0.1`, sem merge na main. Falta: teste do Mateus e do amigo nas duas telas; depois merge e release oficial.
+- Release oficial v1.0.1 (29/10, aprovada pelo Mateus: "o sysmonitor deu certo pode jogar pro release oficial"): seção A reconferida — gitleaks sem vazamentos (34 commits); `pip-audit -r requirements-build.txt` sem vulnerabilidades; 186 testes OK. Pendente igual: assinatura de código. Mesmo setup da pré-release (SHA-256 `bb51f1e2…3f73`). `versao-1.0.1` mesclada na `main` (fast-forward).
 
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
