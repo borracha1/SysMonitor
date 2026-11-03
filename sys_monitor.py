@@ -1215,29 +1215,51 @@ class MonitorWindow:
         else:
             self._update_labels()
 
+    def _create_net_cells(self, bg):
+        assert self._net_font is not None
+        cells = []
+        for host, accent in ((self.lbl_up, "accent_up"), (self.lbl_down, "accent_down")):
+            for _ in range(4):
+                cell = tk.Label(host, bg=bg, fg=self.cfg[accent],
+                                font=self._net_font, anchor="w", bd=0, padx=0, pady=0)
+                cells.append(cell)
+                # Tk silently accepts a refused CreateWindowEx with HWND 0.
+                if not cell.winfo_id():
+                    for created in cells:
+                        created.destroy()
+                    if not getattr(self, '_net_cell_refused', False):
+                        _log_event("net split: cell window creation refused; showing totals")
+                    self._net_cell_refused = True
+                    return False
+        self._net_cells = cells
+        self._net_cell_refused = False
+        return True
+
     def _update_net_split(self, metrics):
         self._net_available = bool(getattr(self, "net_split", False) and metrics.get("net_rates") is not None)
         active = self._net_available and (self.mode != 'taskbar' or getattr(self, '_space_level', 0) == 0)
+        if not active and not getattr(self, '_net_active', False):
+            return
+        bg = EMBED_KEY_COLOR if self.mode == "taskbar" else self.cfg["bg_color"]
+        if active and not getattr(self, '_net_active', False):
+            if not hasattr(self, "_net_font"):
+                self._net_font = tkfont.Font(root=self.root, font=self.lbl_up.cget("font"))
+            active = self._create_net_cells(bg)
         changed = active != getattr(self, "_net_active", False)
         self._net_active = active
         if not active and not changed:
             return
-        if not hasattr(self, "_net_font"):
-            self._net_font = tkfont.Font(root=self.root, font=self.lbl_up.cget("font"))
         measure = self._net_font.measure
-        bg = EMBED_KEY_COLOR if self.mode == "taskbar" else self.cfg["bg_color"]
         if changed:
-            for cell in self._net_cells:
-                cell.destroy()
-            self._net_cells = []
+            if not active:
+                for cell in self._net_cells:
+                    cell.destroy()
+                self._net_cells = []
             for host, accent in ((self.lbl_up, "accent_up"), (self.lbl_down, "accent_down")):
                 host.config(fg=bg if active else self.cfg[accent])
                 if active:
-                    # Reserve worst-case content, then draw independently aligned cells.
-                    host.config(text="↓ v4 1000.0 Mbps v6 1000.0 Mbps")
-                    for _ in range(4):
-                        self._net_cells.append(tk.Label(host, bg=bg, fg=self.cfg[accent],
-                            font=self._net_font, anchor="w", bd=0, padx=0, pady=0))
+                    # Only opaque modes reserve requested width using placeholder text.
+                    host.config(text="" if self.mode == "taskbar" else "↓ v4 1000.0 Mbps v6 1000.0 Mbps")
             if self.mode == "taskbar":
                 self._relayout_ping(self._ping_layout_family)
             elif self.mode == "docked":
@@ -1254,7 +1276,7 @@ class MonitorWindow:
                       measure("1000.0 Mbps"), measure(" v6 "), measure("1000.0 Mbps"))
             for row, arrow in enumerate(("↑", "↓")):
                 host = (self.lbl_up, self.lbl_down)[row]
-                host.config(text="↓ v4 1000.0 Mbps v6 1000.0 Mbps", fg=bg)
+                host.config(text="" if self.mode == "taskbar" else "↓ v4 1000.0 Mbps v6 1000.0 Mbps", fg=bg)
                 values = metrics["net_rates"][row]
                 texts = (f"{arrow} v4 ", fmt_speed(values[0]), " v6 ", fmt_speed(values[1]))
                 x = 0
