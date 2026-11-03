@@ -1,4 +1,4 @@
-Atualizado em 2026-10-29 (versão 1.0.1 na main; release oficial v1.0.1)
+Atualizado em 2026-11-03 (versão 1.0.2 na versao-1.0.2; testes e build locais, sem publicação)
 
 # Estado e histórico
 ## Base documentada
@@ -144,11 +144,21 @@ Atualizado em 2026-10-29 (versão 1.0.1 na main; release oficial v1.0.1)
 - Mateus pediu (28/10) publicar para o amigo testar: pré-release `v1.0.1-teste` a partir da `versao-1.0.1`, sem merge na main. Falta: teste do Mateus e do amigo nas duas telas; depois merge e release oficial.
 - Release oficial v1.0.1 (29/10, aprovada pelo Mateus: "o sysmonitor deu certo pode jogar pro release oficial"): seção A reconferida — gitleaks sem vazamentos (34 commits); `pip-audit -r requirements-build.txt` sem vulnerabilidades; 186 testes OK. Pendente igual: assinatura de código. Mesmo setup da pré-release (SHA-256 `bb51f1e2…3f73`). `versao-1.0.1` mesclada na `main` (fast-forward).
 
+## Marco 2026-11-03 · 1.0.2: células de rede recusadas (versao-1.0.2, local)
+- Correção e regressões em `f002df046a23dd7d17d261f458a5d1dd821a7cb2`: taskbar não escreve molde nos hosts; docked/floating preservam reserva por texto. Helper força `winfo_id()` de cada célula antes de mapear, para no primeiro 0, destrói todas as criadas naquela tentativa e mantém total/cor normal. Próximo tick tenta novamente; log único por sequência, rearmado após sucesso. Guarda de reentrada preservada.
+- TDD real Tk/Win32, pai `STATIC`/`WS_POPUP` isolado, sessão/space monitor falsos, gancho WH_CBT da própria thread recusando `Static`, sem tocar no Explorer. Antes de alterar produção: `Ran 4 tests in 1.928s`, `FAILED (failures=4)`. Falhas esperadas: recuperação mantém `winfo_id() == 0`; nenhum log (`0 != 1`); oito células inválidas em vez de lista vazia; molde `1000.0` presente no host. Saída completa: `D:/dev/temp/sysmonitor-1.0.2/red.txt`.
+- Verde focado final: `Ran 4 tests in 3.109s`, `OK` (`green.txt` no mesmo diretório). Testes verificam totais/cores, interrupção na primeira recusa, limpeza, recuperação com oito HWNDs reais/IsWindow e log único/rearme. Suíte completa após versão: `py -3.12 -m unittest discover -s tests -v` → `Ran 190 tests in 33.199s`, `OK` (`suite-final.txt`), incluindo `test_split_activation_relayout_reenters_and_disables_cells` e três modos. `git diff --check` aprovado.
+- Versão central e expectativas dos testes atualizadas para 1.0.2; build/installer recebem versão de `version.py`, sem alteração necessária. `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` saiu 0, ambos exes imprimiram `SysMonitor 1.0.2`/`congelado: True` no `--verificar` e ISCC compilou com sucesso; log `build.txt` no mesmo diretório.
+- Setup gerado, NÃO executado: `D:/dev/pc/SysMonitor/dist/SysMonitor-Setup-1.0.2.exe`; SHA-256 `beed489af58316c9449d20449c7ed330a42181f9437a4b3677b2e47f504f27b0`.
+- `config.ini` não alterado nem incluído em commit: SHA-256 inicial e final `381286c142d75973b7fa2a86fa51e8810da8e59d408c2a5efb501c1295561073`; diff local do Mateus preservado. Temporários/logs desta execução em `D:/dev/temp/`.
+- Sem push, tag, release, merge, troca de branch ou instalação. Aplicativo existente não foi encerrado/reiniciado, barra real e Explorer não foram alterados. Sem dependência, driver ou elevação novos na aplicação.
+- Pendente: teste real do Mateus. Motivo real da recusa de CreateWindowEx continua desconhecido; o `Kbps` ocasional no canto superior esquerdo também segue sem causa conhecida (não se comprovou que venha do SysMonitor). Não foi reinvestigado nem alegado como corrigido.
+
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
 - Suíte `unittest`; build distribuível na branch versao-1.0, sem teste real ainda.
-- Nenhuma tarefa funcional em andamento está registrada no repositório consultado.
+- 1.0.2 implementada e verificada localmente na `versao-1.0.2`; aguarda teste real do Mateus, sem publicação.
 - Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.
 - Riscos de coleta/concorrência estão em [armadilhas.md](armadilhas.md); não foram corrigidos nesta tarefa só de documentação.

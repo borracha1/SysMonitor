@@ -1,4 +1,4 @@
-Atualizado em 2026-10-25 (branch main; limites de uso; sem commit)
+Atualizado em 2026-11-03 (branch versao-1.0.2; células de rede Win32)
 
 # Armadilhas e decisões
 | Problema / decisão | Causa e regra para não repetir | Fonte |
@@ -21,6 +21,7 @@ Atualizado em 2026-10-25 (branch main; limites de uso; sem commit)
 | Texto GDI transparente/invisível | Desenho não preenche alpha; usar max(R,G,B) para cobertura | `make_text_icon()` |
 | Clique esquerdo encerra por acidente | Left-click intencionalmente sem ação; saída só pelo menu direito | `wnd_proc()`, `show_exit_menu()` |
 | Falha UIA transitória faz o widget piscar/sobrepor ícones | Falha de varredura por HWND preserva o último snapshot bom sem renovar timestamp; expira aos 6 s. Só falha fatal do worker (hwnd=None) limpa tudo; log de varredura uma vez por HWND informa keeping last layout | `TaskbarSpaceMonitor._failure` |
+| Molde da rede aparece preto quando faltam células | O molde não é transparente na tela real: sai #000000, não a cor-chave #010101. CreateWindowEx recusado não gera erro no Tk: a célula pode ficar mapeada com winfo_id() 0. Taskbar deve ter host vazio; forçar HWND antes de ativar/mapear, abortar no primeiro 0 e destruir todas as células da tentativa, mantendo total e cor normal. Repetir no próximo tick; log único até sucesso. Motivo real da recusa ainda desconhecido | `_create_net_cells`, `_update_net_split`, `tests/test_net_cells_window.py` |
 
 ## Barras secundárias e testes Tk
 - Shell_SecondaryTrayWnd não tem TrayNotifyWnd: nunca posicionar junto da borda da tela como se ela fosse bandeja. Sem UIA válida daquela barra, ocultar/não criar; usar SystemTray.* para o limite direito, mesmo com mod Windhawk.

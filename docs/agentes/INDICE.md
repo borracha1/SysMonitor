@@ -1,4 +1,4 @@
-Atualizado em 2026-10-29 (versão 1.0.1 na main; release oficial v1.0.1)
+Atualizado em 2026-11-03 (versão 1.0.2 na versao-1.0.2; build local, sem publicação)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -16,8 +16,8 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Versão 1.0.1 (`version.py`) na `main` e publicada como release oficial `v1.0.1` (setup no GitHub); `versao-1.0.1` mesclada.
-Última mudança funcional: lado escolhido manda, compactando e diminuindo a fonte antes de trocar de lado (3dc30c1, 2026-10-28); detalhes em [estado.md](estado.md).
+Versão 1.0.2 (`version.py`) na `versao-1.0.2`, somente local; release oficial publicada continua `v1.0.1`.
+Última mudança funcional: hosts da rede sem molde no taskbar e recuperação automática após recusa de HWND das células (`f002df0`, 2026-11-03). TDD real isolado: 4 regressões verdes, suíte de 190 testes OK e setup 1.0.2 gerado sem executar. Motivo real da recusa e Kbps no canto ainda sem causa conhecida; falta teste real do Mateus. Detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
