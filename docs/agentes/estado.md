@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 local, sem commit)
+Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 em commit local, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -154,8 +154,9 @@ Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 local, se
 - Sem push, tag, release, merge, troca de branch ou instalação. Aplicativo existente não foi encerrado/reiniciado, barra real e Explorer não foram alterados. Sem dependência, driver ou elevação novos na aplicação.
 - Pendente: teste real do Mateus. Motivo real da recusa de CreateWindowEx continua desconhecido; o `Kbps` ocasional no canto superior esquerdo também segue sem causa conhecida (não se comprovou que venha do SysMonitor). Não foi reinvestigado nem alegado como corrigido.
 
-## Marco 2026-11-06 · 1.0.3: notificações por família (versao-1.0.3, local, sem commit)
-- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; a Latest continua `v1.0.1`. 1.0.3 somente local, revisada pelo Claude, aguardando teste do Mateus. Setup `dist/SysMonitor-Setup-1.0.3.exe` gerado sem executar (SHA-256 `CB179F7AD56E066274969B4085AA385BF2C6878A5B8217D8C232B1F5291045AE`).
+## Marco 2026-11-06 · 1.0.3: notificações por família (versao-1.0.3, commit local 03a76ec, sem push)
+- Teste real do Mateus em 2026-11-06: setup instalado às 21:19; às 21:19:45–47 desligou as duas famílias pelo menu, `notify_ipv4/6=false` gravados em %APPDATA%\SysMonitor\config.ini. Disse que os avisos pararam. Escolha ao reabrir o widget não conferida. Com as duas desligadas, nem queda total avisa.
+- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; a Latest continua `v1.0.1`. 1.0.3 sem push, revisada pelo Claude. Setup `dist/SysMonitor-Setup-1.0.3.exe` gerado sem executar (SHA-256 `CB179F7AD56E066274969B4085AA385BF2C6878A5B8217D8C232B1F5291045AE`).
 - `notify_ipv4`/`notify_ipv6` com defaults true, leitura `getboolean`, alteração sob lock e filtro antes da contagem por IP. Retorno considera família anterior; perda global filtra lista e percentuais. Ambas desligadas limpam recuperação pendente e não consomem cooldown global; coleta, métricas e logs preservados.
 - Borda de perda na família exibida em auto/fixo, sem repetição contínua, duplicação da troca ou toast parcial durante queda total. Estado de ambas atualizado inclusive em queda total; ciclo inicial/primeiro após `set_groups` tratado como borda, conforme expectativa expressa da tarefa. Cooldown independente por família; trocas marcam mas não obedecem ao intervalo. Bordas omitidas por intervalo contam para silenciar e permitem o informe. `set_groups` limpa; `set_mode` preserva.
 - Menu direto após destinos: `Notificar IPv4`/`Notificar IPv6`, grupo vazio desabilitado. Persiste antes de aplicar, restaura variável/loga falha; helper compartilhado com modo preserva destinos legados. Sincronização entre barras e liberação de variáveis na destruição.
@@ -170,7 +171,7 @@ Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 local, se
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
 - Suíte `unittest`; build distribuível na branch versao-1.0, sem teste real ainda.
-- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; Latest continua `v1.0.1`. 1.0.3 local na `versao-1.0.3`, sem commit, com setup gerado, aguardando teste do Mateus.
+- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; Latest continua `v1.0.1`. 1.0.3 em commit local na `versao-1.0.3`, sem push, testada pelo Mateus. Falta a aprovação de push/release e a seção A do checklist de segurança antes de release.
 - Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.
 - Riscos de coleta/concorrência estão em [armadilhas.md](armadilhas.md); não foram corrigidos nesta tarefa só de documentação.
