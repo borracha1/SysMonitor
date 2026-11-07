@@ -142,7 +142,8 @@ class LifecycleTests(unittest.TestCase):
     def test_main_executes_reconfigurations_without_delay_or_fallback(self):
         from types import SimpleNamespace
         cfg = configparser.ConfigParser()
-        cfg.read_dict({'window': {'display_mode': 'taskbar', 'update_interval_ms': '1000'}, 'ping': {}})
+        cfg.read_dict({'window': {'display_mode': 'taskbar', 'update_interval_ms': '1000',
+                                  'accent_up': '#111', 'accent_down': '#222'}, 'ping': {}})
         windows = [Mock(embed_failed=False, exit_requested=False, reconfigure_requested=True)
                    for _ in range(6)]
         windows.append(Mock(embed_failed=False, exit_requested=True))
@@ -150,6 +151,7 @@ class LifecycleTests(unittest.TestCase):
         clock = Mock()
         clock.monotonic.return_value = 0
         logs = Mock()
+        recorder, history_ui = Mock(), Mock()
         ns = load_definitions('sys_monitor.py', {'main'}, {
             'ensure_single_instance': Mock(), 'load_config': lambda: cfg,
             '_enable_dpi_awareness': Mock(), 'Metrics': Metrics, 'Collector': Mock(),
@@ -157,12 +159,19 @@ class LifecycleTests(unittest.TestCase):
             'TaskbarSpaceMonitor': Mock(),
             'TaskbarSession': Mock(return_value=Mock(exit_requested=False)),
             'enumerate_secondary_taskbars': Mock(return_value=[]), 'find_taskbar': Mock(return_value=(1, 2)),
-            'wait_for_taskbar': Mock(return_value=True), 'time': clock, '_log_event': logs})
+            'wait_for_taskbar': Mock(return_value=True), 'time': clock, '_log_event': logs,
+            'TrafficHistory': Mock(), 'TrafficRecorder': Mock(return_value=recorder),
+            'TrafficHistoryWindow': Mock(return_value=history_ui), 'fmt_speed': Mock(),
+            'data_dir': lambda: Path('.')})
         ns['main']()
         self.assertEqual(factory.call_count, 7)
         self.assertTrue(all(call.args[3] == 'taskbar' for call in factory.call_args_list))
         clock.sleep.assert_not_called()
         logs.assert_not_called()
+        recorder.start.assert_called_once()
+        recorder.stop.assert_called_once()
+        recorder.join.assert_called_once_with(timeout=2)
+        history_ui.close.assert_called_once()
 
     def test_save_failure_does_not_apply_and_success_closes_first(self):
         from test_ping_views import PingViewTests, FakeLabel

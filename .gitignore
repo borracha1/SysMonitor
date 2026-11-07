@@ -5,3 +5,4 @@ backup/
 .venv-build/
 build/
 dist/
+trafego-historico.csv*

@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 em commit local, sem push)
+Atualizado em 2026-11-06 (1.1.0 implementada na versao-1.1, commits locais, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -167,8 +167,17 @@ Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 em commit
 - Verificação final: `py -3.12 -m unittest discover -s tests` → `Ran 207 tests in 22.513s`, `OK` (base inicial: 190 OK em 20.064 s). `git diff --check` e py_compile das fontes de produção alteradas e novos testes principais aprovados. Sem toast real nos testes: notificadores falsos nos ciclos de perda.
 - HEAD inicial/final `062332f5ecc95bc4e7d0b6d27456b716eba09e95`, branch `versao-1.0.3`; config.ini preservado, SHA-256 inicial/final `381286c142d75973b7fa2a86fa51e8810da8e59d408c2a5efb501c1295561073` (modificação prévia do Mateus continua no status). Sem commit/push/tag/release, troca de branch, build, instalação ou comando para encerrar/reiniciar widget. Pendente apenas validação interativa do Mateus/revisão e instalador pelo Claude; testes isolados não substituem o ambiente real.
 
+## Marco 2026-11-06 · 1.1.0: histórico por família (versao-1.1, local)
+- Plano aprovado executado nas cinco tarefas, com código fornecido preservado: marcas de ping (`fff8135`), pontos/CSV/gravador (`d7c3b60`), geometria (`640cf04`), janela (`1c19b08`) e integração/versão/documentação no commit deste marco. [Spec](../superpowers/specs/2026-11-06-historico-trafego-design.md) e [plano](../superpowers/plans/2026-11-06-historico-trafego.md).
+- RED observado antes de cada implementação: T1 `AttributeError` de `take_loss_marks` (6 testes, 7 erros com subtestes); T2 `ModuleNotFoundError: traffic_history`; T3 `ImportError: build_chart`; T4 `ModuleNotFoundError: traffic_history_ui`; T5 `ImportError: is_click` e teste de ciclo de vida falhando porque `recorder.start` recebeu zero chamadas.
+- Verdes focados: ping 89 OK; armazenamento 17 OK; armazenamento/gráfico 32 OK; janela/tráfego 48 OK. Suíte completa: `py -3.12 -m unittest discover -s tests` → `Ran 273 tests in 30.825s`, `OK`. Self-check: `SysMonitor 1.1.0 (widget)`, Tcl 8.6.15, código 0; `git diff --check` aprovado.
+- Testes antigos ajustados somente como previsto: `test_main_executes_reconfigurations_without_delay_or_fallback` recebe fakes/cores e verifica start/stop/join/close; `test_version` e três expectativas de self-check recebem 1.1.0. Nenhum outro teste antigo alterado.
+- Captura Tk real: `D:/dev/temp/sysmonitor-1.1/janela.png`, 800x360, dados sintéticos de conferência em memória (picos, buraco, duas marcas), sem usar CSV real. Rótulos sem sobreposição, download azul/upload verde e faixas nas duas intensidades conferidos. Script e PowerShell filho encerrados; zero processos da conferência restantes.
+- Sem desvio funcional do plano; um patch de edição precisou ser reaplicado após releitura. config.ini não alterado nem adicionado; mudança local prévia do Mateus permanece. Sem push/tag/release/troca de branch/build/instalação ou reinício do widget; barra real intocada.
+- Pendente: revisão pelo Claude, geração do instalador e teste interativo do Mateus (clique na barra/Explorer/DPI e reinício real). Checklist de segurança seção A deve ser reconferido antes de release, não realizada aqui.
+
 ## Limitações e próximos passos
-- Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
+- Histórico disponível no widget desde 1.1.0; bandeja, exportação e períodos acima de 4 h ficam fora desta versão.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
 - Suíte `unittest`; build distribuível na branch versao-1.0, sem teste real ainda.
 - 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; Latest continua `v1.0.1`. 1.0.3 em commit local na `versao-1.0.3`, sem push, testada pelo Mateus. Falta a aprovação de push/release e a seção A do checklist de segurança antes de release.

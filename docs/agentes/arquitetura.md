@@ -1,4 +1,4 @@
-Atualizado em 2026-10-21 (branch main; widgets nas barras secundárias + espaço UIA; sem commit)
+Atualizado em 2026-11-06 (versão 1.1.0 local; histórico por família)
 
 # Arquitetura e dados
 ## Módulos
@@ -11,6 +11,8 @@ Atualizado em 2026-10-21 (branch main; widgets nas barras secundárias + espaço
 | `taskbar_space.py` | Política pura de layout/regiões e daemon UIA de múltiplos HWNDs, sem Tk |
 | `taskbar_session.py` | Gerente Tk das secundárias, sincronização de ações/editor e fechamento global, sem coleta/UIA |
 | `net_split.py` | GetIpStatisticsEx sem admin, deltas DWORD, divisão pura de velocidades e medida da coluna |
+| `traffic_history.py` | Pontos de 5 s, CSV das últimas 4 h, gravador daemon e geometria pura do gráfico |
+| `traffic_history_ui.py` | Janela única Tk do histórico, sem I/O em disco |
 | `metrics_collector.py` | `Metrics` e `Collector` usados pela edição de bandeja |
 | `sensors.py` | NVML por ctypes e temperatura da CPU por HTTP/JSON do LHM |
 | `create_shortcut.py` | Atalhos do usuário no Menu Iniciar e Startup para o widget |
@@ -40,7 +42,10 @@ Atualizado em 2026-10-21 (branch main; widgets nas barras secundárias + espaço
 - Alterações no contrato de coleta exigem revisar as duas implementações.
 
 ## Armazenamento e fronteiras
-- Não há banco de dados, conta, API remota autenticada ou histórico de métricas.
+- Não há banco de dados, conta ou API remota autenticada. O widget mantém histórico local estimado de tráfego por família (a bandeja não grava histórico).
+- `TrafficRecorder` único lê `metrics.net_rates` sob lock a cada 1 s e consome `PingMonitor.take_loss_marks()` (pior perda exata por família desde a leitura, zerada ao ler e ao trocar grupos). Independente de notificações.
+- `TrafficHistory` acumula médias de 5 s e pior marca; até 2.880 pontos sob lock. A thread própria carrega/limpa o CSV ao iniciar, acrescenta a cada 60 s, reescreve atomicamente a cada hora e finaliza/grava ao sair (join limitado a 2 s). Erro de disco fica no log uma vez e permite nova tentativa, sem atrasar Tk/coleta.
+- Arquivo `data_dir()/trafego-historico.csv`, sem IPs, sites ou programas. Geometria pura ordena pontos, preserva picos por pixel e interrompe buracos; Tk apenas desenha. Ver [spec](../superpowers/specs/2026-11-06-historico-trafego-design.md).
 - Configuração, `crash.log` e `sysmon.log` ficam junto aos scripts, não no diretório corrente.
 - `sysmon.log` registra ciclo de vida do widget e é apagado ao ultrapassar 256.000 bytes antes da próxima escrita.
 - `crash.log` recebe exceções de thread principal/background; widget também captura callbacks Tk.

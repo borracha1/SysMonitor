@@ -68,3 +68,18 @@ def net_column_width(measure, split):
         return measure('↓1000.0 Mbps')
     prefix = max(measure('↑ v4 '), measure('↓ v4 '))
     return prefix + measure('1000.0 Mbps') + measure(' v6 ') + measure('1000.0 Mbps')
+
+
+def net_family_at(x, left, widths):
+    """Family under x in the split network column: v4 half, then v6 half."""
+    prefix, v4_value, v6_prefix, v6_value = widths
+    if x < left or x >= left + prefix + v4_value + v6_prefix + v6_value:
+        return None
+    return 'ipv4' if x < left + prefix + v4_value else 'ipv6'
+
+
+def is_click(press, release, tolerance=3):
+    """A press released without really moving, as opposed to a drag."""
+    if press is None:
+        return False
+    return abs(release[0] - press[0]) <= tolerance and abs(release[1] - press[1]) <= tolerance

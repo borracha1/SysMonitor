@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (versão 1.0.3 local; preferências de notificação IPv4/IPv6)
+Atualizado em 2026-11-06 (versão 1.1.0 local; histórico de tráfego)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -59,6 +59,13 @@ python3 create_shortcut.py
 - `mute_window_s=120`: janela móvel em segundos (limite inclusivo). Conta avisos de troca por perda, de borda na família exibida e de perda global, inclusive omitidos pelo silêncio. Bordas impedidas pelo cooldown por família também contam e podem emitir informe de silêncio; o cooldown global existente continua valendo. notify=false e famílias desligadas não acumulam assuntos.
 - `unmute_after_s=1800`: tempo sem NENHUMA resposta falha daquele IP para reativar; uma falha reinicia a espera, mesmo no grupo inativo. Reativação limpa o histórico daquele IP; set_groups limpa todos. Estado em memória, sem persistência de silêncio.
 - Defaults declarados em sys_monitor.py e lidos em PingMonitor.from_config, compartilhado pelo widget e pela edição de bandeja. Config existente recebe defaults apenas em memória: o config.ini local não foi alterado nesta tarefa. Sem nova dependência, privilégio ou driver.
+
+## Arquivo de histórico (1.1.0)
+- Widget: `data_dir()/trafego-historico.csv`; fonte = raiz do projeto, exe = `%APPDATA%\SysMonitor`. Ignorado por `trafego-historico.csv*`, inclusive temporários.
+- Sem cabeçalho: `epoch,v4_down,v4_up,v6_down,v6_up,v4_mark,v6_mark`; velocidades inteiras em bytes/s, vazio quando sem medição; marcas 0/1/2 = nenhuma/parcial/total. Sem IPs ou dados de navegação.
+- Médias de 5 s, gravação a cada minuto e ao sair, retenção de 4 h; limpeza atômica ao iniciar e a cada hora. Leitura descarta linhas inválidas, antigas e mais de 60 s futuras. Valores estimados pela proporção de pacotes.
+- Ver [spec](../superpowers/specs/2026-11-06-historico-trafego-design.md). Testes usam pastas temporárias; conferência visual somente em `D:/dev/temp/sysmonitor-1.1/`.
+- Validação: `py -3.12 -m unittest discover -s tests` → `Ran 273 tests in 30.825s`, `OK`; `py -3.12 sys_monitor.py --verificar` → `SysMonitor 1.1.0 (widget)`, código 0. Sem build/instalação nesta tarefa; instalador fica para o Claude após revisão.
 
 ## Testes e build
 - Suíte automatizada stdlib: `py -3.12 -m unittest discover -s tests -v` (na raiz, sem instalar pytest). Cobre coleta por destino, janela, alertas, recuperação e formatação. Usar `py -3.12`: é o Python do widget (Store) e o único com `psutil`; o `python` do PATH (3.14) não tem.

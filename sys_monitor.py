@@ -45,7 +45,9 @@ from sensors import SensorReader
 from ping_monitor import (PingMonitor, ping_settings, parse_ping_groups, fmt_ping_line,
                           ping_has_problem, ping_marker, ping_column_width, initial_ping_family)
 from ping_config import save_ping_settings, save_window_settings
-from net_split import PacketCounters, split_rates, net_column_width
+from net_split import PacketCounters, split_rates, net_column_width, net_family_at, is_click
+from traffic_history import TrafficHistory, TrafficRecorder
+from traffic_history_ui import TrafficHistoryWindow
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
 from taskbar_session import TaskbarSession
 from screen_side import screen_key, load_side, save_side, monitor_device
@@ -388,6 +390,15 @@ def _win_rect(hwnd):
     if not _u32.GetWindowRect(hwnd, ctypes.byref(r)):
         return None
     return r
+
+
+TRAFFIC_HISTORY_UI = None  # One process-wide window; set by main().
+
+
+def _cursor_pos():
+    point = wintypes.POINT()
+    _u32.GetCursorPos(ctypes.byref(point))
+    return point.x, point.y
 
 
 def find_taskbar():
@@ -750,6 +761,7 @@ class MonitorWindow:
             self._place_window()
             self._bind_drag()
             self._bind_menu()
+            self._bind_traffic_click()
         except Exception:
             if self.taskbar_hwnd is not None:
                 self._destroy()
@@ -1092,6 +1104,7 @@ class MonitorWindow:
 
         def start(e):
             self._drag["x"], self._drag["y"] = e.x, e.y
+            self._drag_press = (e.x_root, e.y_root)
 
         def move(e):
             x = self.root.winfo_pointerx() - self._drag["x"]
@@ -1103,6 +1116,8 @@ class MonitorWindow:
             self.cfg["y"] = str(self.root.winfo_y())
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 self.full_cfg.write(f)
+            if is_click(getattr(self, "_drag_press", None), (e.x_root, e.y_root)):
+                self._on_net_click()
 
         self.root.bind("<ButtonPress-1>", start)
         self.root.bind("<B1-Motion>", move)
@@ -1167,6 +1182,7 @@ class MonitorWindow:
                                 ('Lado: Direita', 'right')):
                 menu.add_radiobutton(label=title, value=side, variable=self._taskbar_side_var,
                                      command=lambda value=side: self._select_taskbar_side(value))
+        menu.add_command(label="Histórico de tráfego…", command=self._open_traffic_history)
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_separator()
         menu.add_command(label="Fechar", command=self.quit)
@@ -1281,8 +1297,7 @@ class MonitorWindow:
         if active != self._net_active:
             return
         if active:
-            widths = (max(measure("↑ v4 "), measure("↓ v4 ")),
-                      measure("1000.0 Mbps"), measure(" v6 "), measure("1000.0 Mbps"))
+            widths = self._net_cell_widths()
             for row, arrow in enumerate(("↑", "↓")):
                 host = (self.lbl_up, self.lbl_down)[row]
                 host.config(text="" if self.mode == "taskbar" else "↓ v4 1000.0 Mbps v6 1000.0 Mbps", fg=bg)
@@ -1294,6 +1309,39 @@ class MonitorWindow:
                     cell.config(text=text)
                     cell.place(x=x, y=0, width=width, relheight=1)
                     x += width
+
+    def _net_cell_widths(self):
+        measure = self._net_font.measure
+        return (max(measure("↑ v4 "), measure("↓ v4 ")), measure("1000.0 Mbps"),
+                measure(" v6 "), measure("1000.0 Mbps"))
+
+    def _bind_traffic_click(self):
+        if self.mode == "floating":
+            return  # The left button drags here; _bind_drag detects a plain click.
+        # Bound on the Toplevel for the same reason as the right-click menu.
+        self.root.bind("<Button-1>", lambda event: self._on_net_click())
+        if getattr(self, "click_catcher", None) is not None:
+            self.click_catcher.bind("<Button-1>", lambda event: self._on_net_click())
+
+    def _on_net_click(self):
+        if getattr(self, "_closing", False):
+            return
+        # Windows coordinates in every mode: Tk's are unreliable for a child
+        # of another process's window (same reason as show_menu).
+        x, y = _cursor_pos()
+        rects = [_win_rect(label.winfo_id()) for label in (self.lbl_up, self.lbl_down)]
+        if None in rects:
+            return
+        left = min(rect.left for rect in rects)
+        if not (left <= x < max(rect.right for rect in rects)
+                and min(rect.top for rect in rects) <= y < max(rect.bottom for rect in rects)):
+            return
+        family = net_family_at(x, left, self._net_cell_widths()) if self._net_active else None
+        self._open_traffic_history(family)
+
+    def _open_traffic_history(self, family=None):
+        if TRAFFIC_HISTORY_UI is not None:
+            TRAFFIC_HISTORY_UI.show(family)
 
     def _ping_settings_with_groups(self, **settings):
         # The selective writer removes targets; preserve migrated destinations first.
@@ -1596,12 +1644,20 @@ def main():
     if ping:
         ping.start()
 
+    traffic_history = TrafficHistory(data_dir() / "trafego-historico.csv", _log_event)
+    recorder = TrafficRecorder(traffic_history, metrics, ping, _log_event)
+    recorder.start()
+
     # ONE Tk interpreter for the whole process, created and (never) freed on
     # this thread; each widget incarnation is a Toplevel of it. See the
     # MonitorWindow docstring for the crash this prevents.
     app_root = tk.Tk()
     app_root.withdraw()
     app_root.report_callback_exception = MonitorWindow._log_tk_callback_exception
+
+    global TRAFFIC_HISTORY_UI
+    TRAFFIC_HISTORY_UI = TrafficHistoryWindow(app_root, traffic_history, fmt_speed,
+                                              cfg["window"]["accent_up"], cfg["window"]["accent_down"])
 
     space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
     if space_monitor is not None:
@@ -1661,6 +1717,9 @@ def main():
             session.close()
         if space_monitor is not None:
             space_monitor.stop()  # Never join a potentially blocked UIA provider from Tk.
+        TRAFFIC_HISTORY_UI.close()
+        recorder.stop()
+        recorder.join(timeout=2)  # Final write; never hold the exit on a blocked disk.
         collector.stop()
         if ping:
             ping.stop()
