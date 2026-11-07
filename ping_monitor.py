@@ -328,6 +328,7 @@ class PingMonitor(threading.Thread):
         self._clean = {"ipv4": 0, "ipv6": 0}
         self._results = {}
         # A first partial loss is an edge too; group replacement resets this baseline.
+        self._loss_marks = {"ipv4": 0, "ipv6": 0}
         self._family_clean = {"ipv4": True, "ipv6": True}
         self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
         self.interval_s = max(0.2, interval_s)
@@ -411,6 +412,12 @@ class PingMonitor(threading.Thread):
             if not (self.notify_ipv4 or self.notify_ipv6):
                 self._alert_notified = False
 
+    def take_loss_marks(self):
+        """Worst mark per family since the last read: 0 none, 1 some IPs, 2 all."""
+        with self._lock:
+            marks, self._loss_marks = self._loss_marks, {"ipv4": 0, "ipv6": 0}
+            return marks
+
     def _family_notify(self, family):
         return self.notify and getattr(self, "notify_" + family)
 
@@ -442,6 +449,7 @@ class PingMonitor(threading.Thread):
             self.active = self._initial_family()
             self._generation += 1
             self._results = {}
+            self._loss_marks = {"ipv4": 0, "ipv6": 0}
             self._family_clean = {"ipv4": True, "ipv6": True}
             self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
             self._clean = {"ipv4": 0, "ipv6": 0}
@@ -493,6 +501,10 @@ class PingMonitor(threading.Thread):
             clean = bool(targets) and all(self._results[ip][3] for ip in targets)
             self._family_clean[family] = clean
             self._clean[family] = self._clean[family] + 1 if clean else 0
+            if targets:
+                failed = sum(not self._results[ip][3] for ip in targets)
+                mark = 2 if failed == len(targets) else 1 if failed else 0
+                self._loss_marks[family] = max(self._loss_marks[family], mark)
         if self.mode == "auto":
             other = self._other(self.active)
             # Show current loss first, even when the return timer also expires.
