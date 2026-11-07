@@ -327,8 +327,8 @@ class PingMonitor(threading.Thread):
         self.return_clean_cycles = max(1, int(return_clean_cycles))
         self._clean = {"ipv4": 0, "ipv6": 0}
         self._results = {}
-        # A first partial loss is an edge too; group replacement resets this baseline.
         self._loss_marks = {"ipv4": 0, "ipv6": 0}
+        # A first partial loss is an edge too; group replacement resets this baseline.
         self._family_clean = {"ipv4": True, "ipv6": True}
         self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
         self.interval_s = max(0.2, interval_s)

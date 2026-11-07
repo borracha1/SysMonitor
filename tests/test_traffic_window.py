@@ -63,8 +63,10 @@ class WindowTests(unittest.TestCase):
 
     def test_selected_buttons_are_highlighted(self):
         self.window.show('ipv6')
-        self.assertEqual(self.window._buttons['ipv6'].config.call_args.kwargs['relief'], 'sunken')
-        self.assertEqual(self.window._buttons['ipv4'].config.call_args.kwargs['relief'], 'raised')
+        selected = self.window._buttons['ipv6'].config.call_args.kwargs
+        other = self.window._buttons['ipv4'].config.call_args.kwargs
+        self.assertEqual((selected['relief'], selected['bg'], selected['fg']), ('sunken', ui.SELECTED_BG, ui.SELECTED_FG))
+        self.assertEqual((other['relief'], other['bg'], other['fg']), ('raised', ui.NORMAL_BG, ui.NORMAL_FG))
 
     def test_refreshes_every_5_s_and_close_cancels_it(self):
         self.window.show('ipv4')

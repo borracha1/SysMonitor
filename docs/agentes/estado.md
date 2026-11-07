@@ -176,6 +176,12 @@ Atualizado em 2026-11-06 (1.1.0 implementada na versao-1.1, commits locais, sem 
 - Sem desvio funcional do plano; um patch de edição precisou ser reaplicado após releitura. config.ini não alterado nem adicionado; mudança local prévia do Mateus permanece. Sem push/tag/release/troca de branch/build/instalação ou reinício do widget; barra real intocada.
 - Pendente: revisão pelo Claude, geração do instalador e teste interativo do Mateus (clique na barra/Explorer/DPI e reinício real). Checklist de segurança seção A deve ser reconferido antes de release, não realizada aqui.
 
+## Revisão 2026-11-06 · legibilidade do histórico 1.1.0
+- Legendas de perda separadas em marca colorida e texto FG, sem mudar as faixas nem a ordem; seleção dos botões azul/branco, demais com cores do sistema. Comentário de baseline do ping reposicionado; índice corrigido para 1.1.0 na versao-1.1.
+- RED obrigatório: `test_selected_buttons_are_highlighted` executado antes da implementação → `Ran 1 test in 0.007s`, `FAILED (errors=1)`, `KeyError: bg`. Suíte após correção: `Ran 273 tests in 35.279s`, `OK`, comando `py -3.12 -m unittest discover -s tests`.
+- Captura refeita pelo script isolado `D:/dev/temp/sysmonitor-1.1/ver_janela.py`: `D:/dev/temp/sysmonitor-1.1/janela.png` (800x360), legendas legíveis e IPv4/4 h destacados, sem sobreposição; processo encerrado. `git diff --check` aprovado.
+- Config.ini preservado por SHA-256; widget existente intocado. Um commit local da revisão, sem push, troca de branch ou alteração de build.ps1. Instalador e teste real continuam pendentes.
+
 ## Limitações e próximos passos
 - Histórico disponível no widget desde 1.1.0; bandeja, exportação e períodos acima de 4 h ficam fora desta versão.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.

@@ -26,7 +26,8 @@ Atualizado em 2026-11-06 (versão 1.1.0 local; histórico por família)
 ## Histórico de tráfego (widget, 1.1.0)
 - Clique esquerdo na coluna de rede abre IPv4/IPv6 conforme a metade clicada (ambas as linhas). Sem split visível, abre a última família, inicialmente IPv4. Fora da rede não abre; floating distingue clique de arraste pela tolerância de 3 px.
 - Menu `Histórico de tráfego…` antes de limites, disponível mesmo sem ping. Janela única do processo, filha da raiz oculta: sobrevive à reconstrução do widget/Explorer, e todas as barras a reutilizam.
-- Botões IPv4/IPv6 e 1 h/4 h; período e família ficam na memória da sessão. Janela centrada na tela do clique, redimensionável, Esc fecha; atualização a cada 5 s e cancelamento ao fechar.
+- Botões IPv4/IPv6 e 1 h/4 h; seleção com fundo azul `#2f6fb0`, texto branco e relevo sunken; demais usam cores de botão do sistema. Período e família ficam na memória da sessão. Janela centrada na tela do clique, redimensionável, Esc fecha; atualização a cada 5 s e cancelamento ao fechar.
+- Legendas de perda usam dois labels: só `▌` recebe a cor da marca, texto usa `FG`; ordem visual preservada. Download/upload mantêm texto na própria cor.
 - Canvas com upload/download nas cores configuradas, eixo linear, buracos acima de 15 s e faixas de perda parcial/total independentes dos toasts. Título explicita valores estimados; sem dados mostra `Coletando dados…`.
 - Conferência Tk real isolada: `D:/dev/temp/sysmonitor-1.1/janela.png` (800x360), rótulos sem sobreposição, cores e duas marcas conferidos; processo/script/filho encerrados. Clique no Explorer real fica para o Mateus; widget existente não reiniciado.
 - Contrato completo: [spec do histórico](../superpowers/specs/2026-11-06-historico-trafego-design.md).

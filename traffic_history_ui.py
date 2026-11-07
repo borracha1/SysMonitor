@@ -11,6 +11,10 @@ from traffic_history import build_chart
 
 BG = '#15171a'
 FG = '#e6e6e6'
+SELECTED_BG = '#2f6fb0'
+SELECTED_FG = '#ffffff'
+NORMAL_BG = 'SystemButtonFace'
+NORMAL_FG = 'SystemButtonText'
 GRID = '#33373d'
 MARK_COLORS = {1: '#6b2a2a', 2: '#d83a3a'}
 WIDTH, HEIGHT = 800, 360
@@ -114,10 +118,12 @@ class TrafficHistoryWindow:
             button = tk.Button(header, text=text, width=5, command=command)
             button.pack(side='left', padx=(12 if key == HOUR else 2, 2))
             self._buttons[key] = button
-        for text, color in (('↓ download', self.accent_down), ('↑ upload', self.accent_up),
-                            ('▌ um IP sem resposta', MARK_COLORS[1]),
-                            ('▌ todos sem resposta', MARK_COLORS[2])):
+        for text, color in (('↓ download', self.accent_down), ('↑ upload', self.accent_up)):
             tk.Label(header, text=text, fg=color, bg=BG).pack(side='right', padx=4)
+        for text, color in (('um IP sem resposta', MARK_COLORS[1]),
+                            ('todos sem resposta', MARK_COLORS[2])):
+            tk.Label(header, text=text, fg=FG, bg=BG).pack(side='right', padx=(0, 4))
+            tk.Label(header, text='▌', fg=color, bg=BG).pack(side='right', padx=(4, 0))
         self.canvas = tk.Canvas(window, bg=BG, highlightthickness=0)
         self.canvas.pack(fill='both', expand=True)
         self.canvas.bind('<Configure>', lambda event: self.redraw())
@@ -136,7 +142,9 @@ class TrafficHistoryWindow:
     def _update_buttons(self):
         for key, button in self._buttons.items():
             selected = key in (self.family, self.period_s)
-            button.config(relief='sunken' if selected else 'raised')
+            button.config(relief='sunken' if selected else 'raised',
+                          bg=SELECTED_BG if selected else NORMAL_BG,
+                          fg=SELECTED_FG if selected else NORMAL_FG)
 
     def _refresh(self):
         self.redraw()

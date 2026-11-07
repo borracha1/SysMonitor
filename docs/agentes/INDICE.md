@@ -16,8 +16,8 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Versão 1.0.3 (`version.py`) na `versao-1.0.3`, commit local `03a76ec`, sem push; instalada e testada pelo Mateus em 2026-11-06 (menu e gravação ok; reabertura não conferida). 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag nem release; a Latest continua `v1.0.1`.
-Última mudança local: versão 1.1.0 na `versao-1.1`, histórico de tráfego estimado por família, CSV local de 4 h e janela 1 h/4 h por clique/menu. TDD nas cinco tarefas, 273 testes OK e `--verificar` código 0; sem build nem reinício do widget. Revisão/instalador pelo Claude e teste real do Mateus pendentes. As preferências de toast por família e silêncio por IP da 1.0.3 permanecem. Motivo real da recusa de HWND e Kbps no canto continuam sem causa conhecida. Detalhes e verificações em [estado.md](estado.md).
+Versão 1.1.0 (`version.py`) na `versao-1.1`, commits locais, sem push, incluindo a 1.0.3 (avisos por família; instalada e testada pelo Mateus em 2026-11-06: menu e gravação ok, reabertura não conferida). 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag nem release; a Latest continua `v1.0.1`.
+Última mudança local: histórico de tráfego estimado por família, CSV local de 4 h e janela 1 h/4 h por clique/menu, legenda legível e botões selecionados destacados. TDD nas cinco tarefas e regressão da revisão, 273 testes OK e `--verificar` código 0; sem build nem reinício do widget. Revisão/instalador pelo Claude e teste real do Mateus pendentes. As preferências de toast por família e silêncio por IP da 1.0.3 permanecem. Motivo real da recusa de HWND e Kbps no canto continuam sem causa conhecida. Detalhes e verificações em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
