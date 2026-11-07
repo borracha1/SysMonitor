@@ -16,7 +16,7 @@ class WindowTests(unittest.TestCase):
         self.master = Mock()
         self.history = Mock()
         self.history.clock.return_value = 1_000_000
-        self.history.points.return_value = []
+        self.history.points_between.return_value = []
         self.top = self.tk.Toplevel.return_value
         self.top.winfo_exists.return_value = True
         self.canvas = self.tk.Canvas.return_value
@@ -26,7 +26,7 @@ class WindowTests(unittest.TestCase):
                                               work_area=lambda: (0, 0, 1920, 1040))
 
     def shown_family(self):
-        return self.history.points.call_args.args[0]
+        return self.history.points_between.call_args.args[0]
 
     def test_window_is_a_child_of_the_hidden_root_so_it_survives_explorer_restart(self):
         self.window.show('ipv4')
@@ -38,7 +38,7 @@ class WindowTests(unittest.TestCase):
 
     def test_default_family_is_ipv4_and_period_is_one_hour(self):
         self.window.show()
-        self.assertEqual(self.history.points.call_args.args, ('ipv4', 3600))
+        self.assertEqual(self.history.points_between.call_args.args, ('ipv4', 1_000_000 - 3600, 1_000_000))
 
     def test_second_click_reuses_the_window_and_changes_family(self):
         self.window.show('ipv4')
@@ -56,10 +56,10 @@ class WindowTests(unittest.TestCase):
     def test_chosen_period_lasts_until_the_program_closes(self):
         self.window.show('ipv4')
         self.window._select_period(14400)
-        self.assertEqual(self.history.points.call_args.args, ('ipv4', 14400))
+        self.assertEqual(self.history.points_between.call_args.args, ('ipv4', 1_000_000 - 14400, 1_000_000))
         self.window.close()
         self.window.show()
-        self.assertEqual(self.history.points.call_args.args[1], 14400)
+        self.assertEqual(self.history.points_between.call_args.args[1], 1_000_000 - 14400)
 
     def test_selected_buttons_are_highlighted(self):
         self.window.show('ipv6')
@@ -76,9 +76,9 @@ class WindowTests(unittest.TestCase):
         self.window.close()
         self.top.after_cancel.assert_called_with('job')
         self.top.destroy.assert_called_once()
-        calls = self.history.points.call_count
+        calls = self.history.points_between.call_count
         self.window.redraw()
-        self.assertEqual(self.history.points.call_count, calls)
+        self.assertEqual(self.history.points_between.call_count, calls)
 
     def test_window_closed_by_the_system_is_recreated(self):
         self.window.show('ipv4')
@@ -98,7 +98,7 @@ class WindowTests(unittest.TestCase):
         self.assertIn('Coletando dados…', texts)
 
     def test_single_point_segment_is_still_drawn(self):
-        self.history.points.return_value = [FamilyPoint(1_000_000 - 10, 100, None, 0)]
+        self.history.points_between.return_value = [FamilyPoint(1_000_000 - 10, 100, None, 0)]
         self.window.show('ipv4')
         self.assertTrue(self.canvas.create_line.called)
 

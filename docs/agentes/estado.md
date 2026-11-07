@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (1.1.0 implementada na versao-1.1, commits locais, sem push)
+Atualizado em 2026-11-07 (1.1.0 com zoom, seleção, filtro e ping; versao-1.1, local, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -175,13 +175,25 @@ Atualizado em 2026-11-06 (1.1.0 implementada na versao-1.1, commits locais, sem 
 - Captura Tk real: `D:/dev/temp/sysmonitor-1.1/janela.png`, 800x360, dados sintéticos de conferência em memória (picos, buraco, duas marcas), sem usar CSV real. Rótulos sem sobreposição, download azul/upload verde e faixas nas duas intensidades conferidos. Script e PowerShell filho encerrados; zero processos da conferência restantes.
 - Sem desvio funcional do plano; um patch de edição precisou ser reaplicado após releitura. config.ini não alterado nem adicionado; mudança local prévia do Mateus permanece. Sem push/tag/release/troca de branch/build/instalação ou reinício do widget; barra real intocada.
 - Revisão do Claude feita em 2026-11-06: código conferido, gravador rodado 15 s com coleta e pings reais em pasta temporária (soma v4+v6 igual ao total). Setup `dist/SysMonitor-Setup-1.1.0.exe` gerado sem executar (SHA-256 `d2aa583ae56499176321d0e9cfa8ce08472eccfdb268237c754ffe1d6ca7bf45`).
-- Pendente: teste interativo do Mateus (clique na barra/Explorer/DPI e reinício real). Checklist de segurança seção A deve ser reconferido antes de release, não realizada aqui.
+- Teste interativo da primeira etapa aprovado pelo Mateus em 2026-11-06 nos 6 itens: metades v4/v6, fora da rede, menu, gráfico, reinício e marcas de ping. A ampliação de 2026-11-07 ainda aguarda revisão/novo instalador e teste real. Checklist de segurança seção A deve ser reconferido antes de release.
 
 ## Revisão 2026-11-06 · legibilidade do histórico 1.1.0
 - Legendas de perda separadas em marca colorida e texto FG, sem mudar as faixas nem a ordem; seleção dos botões azul/branco, demais com cores do sistema. Comentário de baseline do ping reposicionado; índice corrigido para 1.1.0 na versao-1.1.
 - RED obrigatório: `test_selected_buttons_are_highlighted` executado antes da implementação → `Ran 1 test in 0.007s`, `FAILED (errors=1)`, `KeyError: bg`. Suíte após correção: `Ran 273 tests in 35.279s`, `OK`, comando `py -3.12 -m unittest discover -s tests`.
 - Captura refeita pelo script isolado `D:/dev/temp/sysmonitor-1.1/ver_janela.py`: `D:/dev/temp/sysmonitor-1.1/janela.png` (800x360), legendas legíveis e IPv4/4 h destacados, sem sobreposição; processo encerrado. `git diff --check` aprovado.
 - Config.ini preservado por SHA-256; widget existente intocado. Um commit local da revisão, sem push, troca de branch ou alteração de build.ps1. Instalador e teste real continuam pendentes.
+
+## Marco 2026-11-07 · períodos curtos, zoom, seleção, filtro e ping (1.1.0 local)
+- [Plano aprovado](../superpowers/plans/2026-11-07-historico-zoom-filtro-ping.md) e [spec](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md) implementados com o código fornecido, sem dependência, privilégio ou driver novos. T1 `bed55a6`, T2 `4d894eb`, T3 `87908cd`; T4 no commit deste marco.
+- RED T1: 7 testes, 7 erros, `AttributeError: 'PingMonitor' object has no attribute 'take_worst_rtts'`. Verde ping: 96 testes OK; suíte completa `Ran 280 tests in 24.409s`, OK.
+- RED T2: 10 testes, 2 falhas/8 erros; `add_sample` não aceitava o terceiro argumento, `FamilyPoint.ping` e `points_between` ausentes, formato/chamada do gravador incompatíveis. Verde tráfego: 70 OK; suíte completa `Ran 290 tests in 24.908s`, OK.
+- RED T3: importação falhou por `ALL_SERIES` ausente (1 teste, 1 erro). Verde tráfego: 98 OK; suíte completa `Ran 318 tests in 27.011s`, OK.
+- RED T4: 49 testes, 46 erros, `TypeError: 'Mock' object is not iterable`: janela antiga ainda lia `history.points`, enquanto o novo contrato fornece `points_between`. Suíte completa `Ran 351 tests in 25.192s`, OK. Todos os comandos usam `py -3.12 -m unittest discover -s tests` (focados com `-p`). `--verificar`: SysMonitor 1.1.0 (widget), Tcl 8.6.15, código 0.
+- Testes antigos: em `test_traffic_history.py`, `test_load_ignores_bad_lines_and_times_out_of_range` espera conversão 7→9 colunas; `test_tick_feeds_rates_and_marks` e `test_tick_without_ping_has_no_marks` esperam RTT no terceiro argumento. Em `test_traffic_window.py`, fakes/asserções migram de `points` para `points_between`; período passa a intervalo explícito nos casos de período padrão e persistência. Nenhum outro teste antigo alterado; `test_traffic_chart.py` permanece intacto.
+- Capturas Tk reais, 800x400, em `D:/dev/temp/sysmonitor-1.1/`: `janela-ao-vivo.png`, `janela-parada.png`, `janela-filtro.png`. Dados sintéticos em memória incluem pico de ping e pontos legados sem ping; nenhuma leitura/gravação do CSV real. Conferidos botões, legenda, eixos sem sobreposição, resumo acima do gráfico e filtro destacado. Script/filhos encerrados.
+- Sem desvio funcional do plano. Um patch inicial ambíguo deixou temporariamente a inicialização do RTT ausente; falha de edição corrigida após releitura e suítes refeitas. Código final igual ao fornecido. Checkboxes do plano aprovado não alterados para respeitar a lista de arquivos autorizados em cada commit.
+- `config.ini` não alterado/adicionado; SHA-256 inicial/final `381286c142d75973b7fa2a86fa51e8810da8e59d408c2a5efb501c1295561073`. Alteração local prévia preservada. Sem push, tag, release, troca de branch, build, instalação ou encerramento/reinício do widget; barra real intocada.
+- Pendente: revisão pelo Claude, novo instalador e teste interativo desta ampliação pelo Mateus. A aprovação de 2026-11-06 nos 6 itens vale para a etapa inicial, não substitui esta validação.
 
 ## Limitações e próximos passos
 - Histórico disponível no widget desde 1.1.0; bandeja, exportação e períodos acima de 4 h ficam fora desta versão.

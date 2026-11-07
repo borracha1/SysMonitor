@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (versão 1.1.0 local; histórico por família)
+Atualizado em 2026-11-07 (versão 1.1.0 local; zoom, seleção, filtro e ping no histórico)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -26,11 +26,14 @@ Atualizado em 2026-11-06 (versão 1.1.0 local; histórico por família)
 ## Histórico de tráfego (widget, 1.1.0)
 - Clique esquerdo na coluna de rede abre IPv4/IPv6 conforme a metade clicada (ambas as linhas). Sem split visível, abre a última família, inicialmente IPv4. Fora da rede não abre; floating distingue clique de arraste pela tolerância de 3 px.
 - Menu `Histórico de tráfego…` antes de limites, disponível mesmo sem ping. Janela única do processo, filha da raiz oculta: sobrevive à reconstrução do widget/Explorer, e todas as barras a reutilizam.
-- Botões IPv4/IPv6 e 1 h/4 h; seleção com fundo azul `#2f6fb0`, texto branco e relevo sunken; demais usam cores de botão do sistema. Período e família ficam na memória da sessão. Janela centrada na tela do clique, redimensionável, Esc fecha; atualização a cada 5 s e cancelamento ao fechar.
-- Legendas de perda usam dois labels: só `▌` recebe a cor da marca, texto usa `FG`; ordem visual preservada. Download/upload mantêm texto na própria cor.
-- Canvas com upload/download nas cores configuradas, eixo linear, buracos acima de 15 s e faixas de perda parcial/total independentes dos toasts. Título explicita valores estimados; sem dados mostra `Coletando dados…`.
-- Conferência Tk real isolada: `D:/dev/temp/sysmonitor-1.1/janela.png` (800x360), rótulos sem sobreposição, cores e duas marcas conferidos; processo/script/filho encerrados. Clique no Explorer real fica para o Mateus; widget existente não reiniciado.
-- Contrato completo: [spec do histórico](../superpowers/specs/2026-11-06-historico-trafego-design.md).
+- Botões IPv4/IPv6 e 5 min/15 min/1 h/4 h; seleção azul/branca. Ao vivo segue o relógio a cada 5 s; zoom ou seleção fixam o trecho e desligam o destaque do período. Um botão de período volta ao vivo. Trocar família preserva o trecho; fechar descarta o trecho parado, mantendo período e filtro na sessão.
+- Zoom de 25% pela roda (âncora sob o mouse, centro fora do gráfico), botões +/− e teclas +, =, − e teclado numérico (centro). Limites de 1 min a 4 h, deslizando para dentro da retenção e antes de agora.
+- Arraste esquerdo desenha faixa limitada ao gráfico; movimento menor que 4 px não seleciona. Soltar fixa o trecho (mínimo 1 min); direita→esquerda também funciona. Atualização durante arraste não apaga a faixa nem muda o trecho de referência. Esc cancela o arraste; fora dele fecha.
+- Resumo só no modo parado, com quebra de linha: início/fim, pico e média das medidas visíveis e intervalos de 5 s com falha, calculados antes da redução por pixel. Trecho vazio mostra `Sem dados neste trecho`.
+- Legenda clicável: download, upload, ping e perda (as duas marcas juntas). Clique isola; outro troca; repetir o ativo mostra tudo. Ativo com fundo destacado. Velocidades dividem eixo esquerdo ajustado ao filtro; ping lilás `#c9a0ff` tem eixo próprio em ms à direita, incluindo 0 ms. Só perda mantém apenas o eixo de tempo; dados antigos sem ping não desenham linha/eixo de ping.
+- Canvas preserva cores configuradas, buracos acima de 15 s e marcas de perda independentes dos toasts. Janela única redimensionável, centrada na tela do clique, com cancelamento do timer ao fechar. Título explicita valores estimados.
+- Conferência Tk real isolada em 2026-11-07, 800x400: `D:/dev/temp/sysmonitor-1.1/janela-ao-vivo.png`, `janela-parada.png` e `janela-filtro.png`. Eixos/botões/legenda sem sobreposição, resumo acima do gráfico e filtro destacado; script/filhos encerrados. Sem tocar no widget/Explorer real.
+- Contratos: [spec inicial](../superpowers/specs/2026-11-06-historico-trafego-design.md) e [zoom, seleção, filtro e ping](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md).
 
 ## Limites de uso, temperatura e cores (widget e bandeja)
 - `Configurar limites de uso…` abre o editor compartilhado (`usage_limits_ui.py`): caixas clicáveis Low/Warning/High no topo, grupo Uso (%) com CPU/GPU/MEMÓRIA e grupo Temperatura (°C) com CPU/GPU. Quinze campos, Restaurar cores padrão, Salvar/Cancelar, Enter/Esc. Instância única por raiz Tk oculta, sem parent no Explorer. Erro identifica a linha inválida e não grava/aplica nada.

@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (versão 1.1.0 local; histórico de tráfego)
+Atualizado em 2026-11-07 (versão 1.1.0 local; histórico com ping e CSV compatível)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -62,10 +62,11 @@ python3 create_shortcut.py
 
 ## Arquivo de histórico (1.1.0)
 - Widget: `data_dir()/trafego-historico.csv`; fonte = raiz do projeto, exe = `%APPDATA%\SysMonitor`. Ignorado por `trafego-historico.csv*`, inclusive temporários.
-- Sem cabeçalho: `epoch,v4_down,v4_up,v6_down,v6_up,v4_mark,v6_mark`; velocidades inteiras em bytes/s, vazio quando sem medição; marcas 0/1/2 = nenhuma/parcial/total. Sem IPs ou dados de navegação.
+- Sem cabeçalho, 9 colunas: `epoch,v4_down,v4_up,v6_down,v6_up,v4_mark,v6_mark,v4_ping,v6_ping`; velocidades inteiras em bytes/s, vazio quando sem medição; marcas 0/1/2 = nenhuma/parcial/total. Ping é o pior tempo de resposta do intervalo, arredondado em ms; vazio sem resposta e 0 válido. Sem IPs ou dados de navegação.
+- Lê também o formato anterior de 7 colunas (ping vazio) e arquivos mistos; reescrita inicial converte para 9. Outras quantidades de colunas e ping negativo são descartados. [Spec desta etapa](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md).
 - Médias de 5 s, gravação a cada minuto e ao sair, retenção de 4 h; limpeza atômica ao iniciar e a cada hora. Leitura descarta linhas inválidas, antigas e mais de 60 s futuras. Valores estimados pela proporção de pacotes.
 - Ver [spec](../superpowers/specs/2026-11-06-historico-trafego-design.md). Testes usam pastas temporárias; conferência visual somente em `D:/dev/temp/sysmonitor-1.1/`.
-- Validação: `py -3.12 -m unittest discover -s tests` → `Ran 273 tests in 30.825s`, `OK`; `py -3.12 sys_monitor.py --verificar` → `SysMonitor 1.1.0 (widget)`, código 0. Sem build/instalação nesta tarefa; instalador fica para o Claude após revisão.
+- Validação em 2026-11-07: `py -3.12 -m unittest discover -s tests` → `Ran 351 tests in 25.192s`, `OK`; `py -3.12 sys_monitor.py --verificar` → `SysMonitor 1.1.0 (widget)`, Tcl 8.6.15, código 0. Sem build/instalação nesta etapa; novo instalador fica para o Claude após revisão.
 
 ## Testes e build
 - Suíte automatizada stdlib: `py -3.12 -m unittest discover -s tests -v` (na raiz, sem instalar pytest). Cobre coleta por destino, janela, alertas, recuperação e formatação. Usar `py -3.12`: é o Python do widget (Store) e o único com `psutil`; o `python` do PATH (3.14) não tem.
