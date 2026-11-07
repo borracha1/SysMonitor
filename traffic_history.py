@@ -237,14 +237,21 @@ class TrafficRecorder(threading.Thread):
 
 
 GAP_S = 15
-MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 12, 12, 26
-TICK_STEP_S = {3600: 900, 4 * 3600: 3600}
+MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 12, 56, 26
+TICK_STEPS = (15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200)
+ALL_SERIES = frozenset({'down', 'up', 'ping', 'loss'})
+MIN_VIEW_S = 60
+ZOOM_STEP = 0.75
 
-Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks')
+Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks ping ping_ticks')
 
 
 def local_hhmm(epoch):
     return time.strftime('%H:%M', time.localtime(epoch))
+
+
+def local_hhmmss(epoch):
+    return time.strftime('%H:%M:%S', time.localtime(epoch))
 
 
 def _larger(first, second):
@@ -255,38 +262,36 @@ def _larger(first, second):
     return max(first, second)
 
 
-def build_chart(points, width, height, now, period_s, fmt_time=local_hhmm):
-    """Geometry only. Each pixel keeps its largest rates and worst mark, so short
+def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=None):
+    """Geometry only. Each pixel keeps its largest values and worst mark, so short
     peaks and failures survive when there are more points than pixels."""
     x0, y0 = MARGIN_LEFT, MARGIN_TOP
     x1, y1 = width - MARGIN_RIGHT, height - MARGIN_BOTTOM
     if x1 - x0 < 2 or y1 - y0 < 2:
         return None
-    span = x1 - x0
-    start = now - period_s
+    pixels = x1 - x0
+    start = end - span_s
     groups = {}
     for point in sorted(points, key=lambda p: p.epoch):
-        if not start <= point.epoch <= now:
+        if not start <= point.epoch <= end:
             continue
-        x = x0 + int((point.epoch - start) / period_s * span)
+        x = x0 + int((point.epoch - start) / span_s * pixels)
         group = groups.get(x)
         if group is None:
-            groups[x] = dict(first=point.epoch, last=point.epoch, down=point.down,
-                             up=point.up, mark=point.mark)
+            groups[x] = dict(first=point.epoch, last=point.epoch, down=point.down, up=point.up,
+                             ping=point.ping, mark=point.mark)
         else:
             group['last'] = point.epoch
-            group['down'] = _larger(group['down'], point.down)
-            group['up'] = _larger(group['up'], point.up)
+            for name in ('down', 'up', 'ping'):
+                group[name] = _larger(group[name], getattr(point, name))
             group['mark'] = max(group['mark'], point.mark)
     ordered = [(x, groups[x]) for x in sorted(groups)]
-    peak = max((value for _, group in ordered for value in (group['down'], group['up'])
-                if value is not None), default=0)
-    top = peak or 1
 
-    def y_of(value):
-        return y1 - (value / top) * (y1 - y0)
+    def peak_of(*names):
+        return max((group[name] for _, group in ordered for name in names if group[name] is not None),
+                   default=None)
 
-    def segments(name):
+    def segments(name, top):
         result, current, previous = [], [], None
         for x, group in ordered:
             value = group[name]
@@ -294,20 +299,89 @@ def build_chart(points, width, height, now, period_s, fmt_time=local_hhmm):
                 result.append(current)
                 current = []
             if value is not None:
-                current.append((x, y_of(value)))
+                current.append((x, y1 - (value / top) * (y1 - y0)))
             previous = group['last']
         if current:
             result.append(current)
         return result
 
-    band_width = max(1, round(BUCKET_S / period_s * span))
-    bands = sorted(((x, min(x + band_width, x1), group['mark']) for x, group in ordered if group['mark']),
-                   key=lambda band: band[2])
-    step = TICK_STEP_S.get(period_s, period_s / 4)
+    speeds = [name for name in ('down', 'up') if name in series]
+    speed_peak = peak_of(*speeds) if speeds else None
+    speed_top = speed_peak or 1
+    down = segments('down', speed_top) if 'down' in series else []
+    up = segments('up', speed_top) if 'up' in series else []
+    if not speeds:
+        y_ticks = []
+    elif not speed_peak:
+        y_ticks = [(y1, 0)]
+    else:
+        y_ticks = [(y1, 0), ((y0 + y1) / 2, speed_top / 2), (y0, speed_top)]
+
+    ping_peak = peak_of('ping') if 'ping' in series else None
+    ping = segments('ping', ping_peak or 1) if 'ping' in series else []
+    if ping_peak is None:
+        ping_ticks = []
+    elif not ping_peak:
+        ping_ticks = [(y1, 0)]
+    else:
+        ping_ticks = [(y1, 0), ((y0 + y1) / 2, round(ping_peak / 2)), (y0, ping_peak)]
+
+    band_width = max(1, round(BUCKET_S / span_s * pixels))
+    bands = []
+    if 'loss' in series:
+        bands = sorted(((x, min(x + band_width, x1), group['mark']) for x, group in ordered if group['mark']),
+                       key=lambda band: band[2])
+
+    step = next((step for step in TICK_STEPS if span_s / step <= 5), TICK_STEPS[-1])
+    formatter = fmt_time or (local_hhmm if step >= 60 else local_hhmmss)
     tick = (int(start) + step - 1) // step * step
     x_ticks = []
-    while tick <= now:
-        x_ticks.append((x0 + (tick - start) / period_s * span, fmt_time(tick)))
+    while tick <= end:
+        x_ticks.append((x0 + (tick - start) / span_s * pixels, formatter(tick)))
         tick += step
-    y_ticks = [(y1, 0)] if not peak else [(y1, 0), (y_of(top / 2), top / 2), (y0, top)]
-    return Chart((x0, y0, x1, y1), segments('down'), segments('up'), bands, x_ticks, y_ticks)
+    return Chart((x0, y0, x1, y1), down, up, bands, x_ticks, y_ticks, ping, ping_ticks)
+
+
+def _slide(start, span, now):
+    """Keep the span, moving the range inside what is stored and before the present."""
+    start = max(min(start, now - span), now - KEEP_S)
+    return start, start + span
+
+
+def _limited_span(span):
+    return min(KEEP_S, max(MIN_VIEW_S, span))
+
+
+def zoom_view(start, end, factor, anchor, now):
+    """The anchor stays at the same place on screen unless a limit moves the range."""
+    span = end - start
+    new_span = _limited_span(span * factor)
+    return _slide(anchor - (anchor - start) * new_span / span, new_span, now)
+
+
+def selection_view(first, second, now):
+    start, end = sorted((first, second))
+    span = _limited_span(end - start)
+    return _slide((start + end) / 2 - span / 2, span, now)
+
+
+def x_to_time(x, plot, start, end):
+    x0, _, x1, _ = plot
+    return start + (min(x1, max(x0, x)) - x0) / (x1 - x0) * (end - start)
+
+
+def summarize(points, start, end, series, fmt_speed, fmt_time=local_hhmm):
+    parts = [f'{fmt_time(start)} – {fmt_time(end)}']
+    for name, label, fmt in (('down', '↓', fmt_speed), ('up', '↑', fmt_speed),
+                             ('ping', 'ping', lambda value: f'{round(value)} ms')):
+        if name not in series:
+            continue
+        values = [getattr(point, name) for point in points if getattr(point, name) is not None]
+        if values:
+            parts.append(f'{label} pico {fmt(max(values))}, média {fmt(sum(values) / len(values))}')
+        else:
+            parts.append(f'{label} sem dados')
+    if 'loss' in series:
+        failures = sum(point.mark > 0 for point in points)
+        parts.append(f'{failures} intervalo{"" if failures == 1 else "s"} com falha')
+    return ' · '.join(parts)
