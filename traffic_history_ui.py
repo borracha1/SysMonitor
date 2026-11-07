@@ -19,7 +19,7 @@ NORMAL_FG = 'SystemButtonText'
 LEGEND_ACTIVE_BG = '#3a3f46'
 GRID = '#33373d'
 PING_COLOR = '#c9a0ff'
-SELECTION_COLOR = '#ffffff'
+SELECTION_OUTLINE = '#7fb3e6'
 MARK_COLORS = {1: '#6b2a2a', 2: '#d83a3a'}
 WIDTH, HEIGHT = 800, 400
 REFRESH_MS = 5000
@@ -236,8 +236,8 @@ class TrafficHistoryWindow:
         x0, y0, x1, y1 = chart.plot
         if not (x0 <= event.x <= x1 and y0 <= event.y <= y1):
             return
-        item = self.canvas.create_rectangle(event.x, y0, event.x, y1, fill=SELECTION_COLOR,
-                                            stipple='gray25', outline=SELECTION_COLOR)
+        item = self.canvas.create_rectangle(event.x, y0, event.x, y1, fill=SELECTED_BG,
+                                            stipple='gray25', outline=SELECTION_OUTLINE)
         # The range on screen now: the clock and the window may change during the drag.
         self._drag = dict(x=event.x, item=item, plot=chart.plot, range=self._current_range())
 

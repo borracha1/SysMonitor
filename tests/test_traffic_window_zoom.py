@@ -136,6 +136,12 @@ class ZoomTests(WindowCase):
 
 
 class DragTests(WindowCase):
+    def test_band_is_translucent_blue_so_the_lines_stay_visible(self):
+        self.window._drag_start(event(x=176))
+        options = self.canvas.create_rectangle.call_args.kwargs
+        self.assertEqual((options['fill'], options['stipple'], options['outline']),
+                         ('#2f6fb0', 'gray25', '#7fb3e6'))
+
     def drag(self, first, last):
         self.window._drag_start(event(x=first))
         self.window._drag_move(event(x=last))

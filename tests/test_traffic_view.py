@@ -16,6 +16,13 @@ def chart(points, series=ALL_SERIES, now=NOW, span=HOUR):
 class FilterTests(unittest.TestCase):
     POINTS = [P(NOW - 20, 100, 50, 1, 10), P(NOW - 10, 200, 40, 2, 20)]
 
+    def test_continuous_failure_has_no_gaps_at_any_zoom(self):
+        for span in (60, 300, 900, 2932, 3600, 14400):
+            with self.subTest(span=span):
+                points = [P(NOW - span + 5 * i, 1, 1, 2) for i in range(span // 5)]
+                bands = chart(points, span=span).bands
+                self.assertTrue(all(left[1] >= right[0] for left, right in zip(bands, bands[1:])))
+
     def test_everything_is_visible_by_default(self):
         result = chart(self.POINTS)
         self.assertTrue(result.down and result.up and result.ping and result.bands)

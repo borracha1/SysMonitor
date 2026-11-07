@@ -4,6 +4,7 @@ No Tk here. All file I/O runs on the TrafficRecorder thread, so a slow disk
 never delays the widget's collection or its interface.
 """
 from collections import deque, namedtuple
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -326,7 +327,7 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
     else:
         ping_ticks = [(y1, 0), ((y0 + y1) / 2, round(ping_peak / 2)), (y0, ping_peak)]
 
-    band_width = max(1, round(BUCKET_S / span_s * pixels))
+    band_width = max(1, math.ceil(BUCKET_S / span_s * pixels))
     bands = []
     if 'loss' in series:
         bands = sorted(((x, min(x + band_width, x1), group['mark']) for x, group in ordered if group['mark']),
