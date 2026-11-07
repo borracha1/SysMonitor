@@ -17,7 +17,7 @@ Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests 
 
 ## Estado
 Versão 1.1.0 (`version.py`) na `versao-1.1`, commits locais, sem push, incluindo a 1.0.3 (avisos por família; instalada e testada pelo Mateus em 2026-11-06: menu e gravação ok, reabertura não conferida). 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag nem release; a Latest continua `v1.0.1`.
-Última mudança local: períodos 5/15 min/1 h/4 h, zoom, seleção com resumo, filtro clicável e linha de ping em ms no histórico; CSV de 9 colunas compatível com as 7 anteriores. TDD nas quatro tarefas, 351 testes OK e `--verificar` código 0; capturas Tk isoladas conferidas. Etapa inicial aprovada pelo Mateus em 2026-11-06 nos 6 itens. Esta ampliação aguarda revisão do Claude, novo instalador e teste real. Widget existente e configuração local preservados. Detalhes em [estado.md](estado.md).
+Última mudança local: períodos 5/15 min/1 h/4 h, zoom, seleção com resumo, filtro clicável e linha de ping em ms no histórico; CSV de 9 colunas compatível com as 7 anteriores. TDD nas quatro tarefas, 353 testes OK e `--verificar` código 0; revisada pelo Claude, com setup gerado. Etapa inicial aprovada pelo Mateus em 2026-11-06 nos 6 itens. Esta ampliação aguarda o teste real dele. Widget existente e configuração local preservados. Detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
