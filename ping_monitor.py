@@ -328,6 +328,7 @@ class PingMonitor(threading.Thread):
         self._clean = {"ipv4": 0, "ipv6": 0}
         self._results = {}
         self._loss_marks = {"ipv4": 0, "ipv6": 0}
+        self._worst_rtts = {"ipv4": None, "ipv6": None}
         # A first partial loss is an edge too; group replacement resets this baseline.
         self._family_clean = {"ipv4": True, "ipv6": True}
         self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
@@ -418,6 +419,12 @@ class PingMonitor(threading.Thread):
             marks, self._loss_marks = self._loss_marks, {"ipv4": 0, "ipv6": 0}
             return marks
 
+    def take_worst_rtts(self):
+        """Largest answered response time per family since the last read, or None."""
+        with self._lock:
+            rtts, self._worst_rtts = self._worst_rtts, {"ipv4": None, "ipv6": None}
+            return rtts
+
     def _family_notify(self, family):
         return self.notify and getattr(self, "notify_" + family)
 
@@ -450,6 +457,7 @@ class PingMonitor(threading.Thread):
             self._generation += 1
             self._results = {}
             self._loss_marks = {"ipv4": 0, "ipv6": 0}
+            self._worst_rtts = {"ipv4": None, "ipv6": None}
             self._family_clean = {"ipv4": True, "ipv6": True}
             self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
             self._clean = {"ipv4": 0, "ipv6": 0}
@@ -505,6 +513,10 @@ class PingMonitor(threading.Thread):
                 failed = sum(not self._results[ip][3] for ip in targets)
                 mark = 2 if failed == len(targets) else 1 if failed else 0
                 self._loss_marks[family] = max(self._loss_marks[family], mark)
+                answered = [self._results[ip][2] for ip in targets if self._results[ip][3]]
+                if answered:
+                    worst = self._worst_rtts[family]
+                    self._worst_rtts[family] = max(answered) if worst is None else max(worst, *answered)
         if self.mode == "auto":
             other = self._other(self.active)
             # Show current loss first, even when the return timer also expires.
