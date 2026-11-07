@@ -15,23 +15,26 @@ KEEP_S = 4 * 3600
 MAX_POINTS = KEEP_S // BUCKET_S
 FUTURE_TOLERANCE_S = 60
 
-Point = namedtuple('Point', 'epoch v4_down v4_up v6_down v6_up v4_mark v6_mark')
-FamilyPoint = namedtuple('FamilyPoint', 'epoch down up mark')
+Point = namedtuple('Point', 'epoch v4_down v4_up v6_down v6_up v4_mark v6_mark v4_ping v6_ping',
+                   defaults=(None, None))
+FamilyPoint = namedtuple('FamilyPoint', 'epoch down up mark ping', defaults=(None,))
 
 
 def _parse_line(line):
     fields = line.strip().split(',')
-    if len(fields) != 7:
+    if len(fields) not in (7, 9):  # 7: first 1.1.0 build, without ping.
         return None
     try:
         epoch = int(fields[0])
         speeds = [int(value) if value else None for value in fields[1:5]]
         marks = [int(fields[5]), int(fields[6])]
+        pings = [int(value) if value else None for value in fields[7:9]]
     except ValueError:
         return None
-    if any(value is not None and value < 0 for value in speeds) or any(m not in (0, 1, 2) for m in marks):
+    if (any(value is not None and value < 0 for value in speeds + pings)
+            or any(m not in (0, 1, 2) for m in marks)):
         return None
-    return Point(epoch, *speeds, *marks)
+    return Point(epoch, *speeds, *marks, *pings)
 
 
 def _format_line(point):
@@ -49,13 +52,14 @@ class TrafficHistory:
         self._bucket = None
         self._samples = []
         self._marks = {'ipv4': 0, 'ipv6': 0}
+        self._rtts = {'ipv4': None, 'ipv6': None}
         # Always rewrite first: a line cut by a power loss would otherwise
         # glue itself to the next append and damage both lines.
         self._needs_rewrite = True
         self._error_logged = False
 
-    def add_sample(self, rates, marks):
-        """rates: ((up_v4, up_v6), (down_v4, down_v6)) or None; marks: per-family worst."""
+    def add_sample(self, rates, marks, rtts=None):
+        """rates: ((up_v4, up_v6), (down_v4, down_v6)) or None; marks and rtts: per family."""
         epoch = int(self.clock()) // BUCKET_S * BUCKET_S
         with self._lock:
             if self._bucket is not None and epoch != self._bucket:
@@ -65,6 +69,10 @@ class TrafficHistory:
                 self._samples.append(rates)
             for family, mark in marks.items():
                 self._marks[family] = max(self._marks[family], mark)
+            for family, rtt in (rtts or {}).items():
+                if rtt is not None:
+                    current = self._rtts[family]
+                    self._rtts[family] = rtt if current is None else max(current, rtt)
 
     def finish_bucket(self):
         with self._lock:
@@ -76,23 +84,30 @@ class TrafficHistory:
             if not self._samples:
                 return None
             return round(sum(sample[direction][family] for sample in self._samples) / len(self._samples))
+        def worst(family):
+            value = self._rtts[family]
+            return None if value is None else round(value)
         point = Point(self._bucket, average(1, 0), average(0, 0), average(1, 1), average(0, 1),
-                      self._marks['ipv4'], self._marks['ipv6'])
+                      self._marks['ipv4'], self._marks['ipv6'], worst('ipv4'), worst('ipv6'))
         self._points.append(point)
         self._pending.append(point)
         del self._pending[:-MAX_POINTS]
         self._bucket = None
         self._samples = []
         self._marks = {'ipv4': 0, 'ipv6': 0}
+        self._rtts = {'ipv4': None, 'ipv6': None}
 
     def points(self, family, period_s):
         now = self.clock()
+        return self.points_between(family, now - period_s, now)
+
+    def points_between(self, family, start, end):
         with self._lock:
-            visible = [p for p in self._points if now - period_s <= p.epoch <= now]
+            visible = [p for p in self._points if start <= p.epoch <= end]
         visible.sort(key=lambda p: p.epoch)
         if family == 'ipv4':
-            return [FamilyPoint(p.epoch, p.v4_down, p.v4_up, p.v4_mark) for p in visible]
-        return [FamilyPoint(p.epoch, p.v6_down, p.v6_up, p.v6_mark) for p in visible]
+            return [FamilyPoint(p.epoch, p.v4_down, p.v4_up, p.v4_mark, p.v4_ping) for p in visible]
+        return [FamilyPoint(p.epoch, p.v6_down, p.v6_up, p.v6_mark, p.v6_ping) for p in visible]
 
     def load(self):
         lines = []
@@ -192,8 +207,10 @@ class TrafficRecorder(threading.Thread):
     def tick(self):
         with self.metrics.lock:
             rates = self.metrics.net_rates
-        marks = self.ping_monitor.take_loss_marks() if self.ping_monitor is not None else {}
-        self.history.add_sample(rates, marks)
+        ping = self.ping_monitor
+        marks = ping.take_loss_marks() if ping is not None else {}
+        rtts = ping.take_worst_rtts() if ping is not None else {}
+        self.history.add_sample(rates, marks, rtts)
         now = self.clock()
         if now >= self._next_rewrite:
             self.history.rewrite()

@@ -118,7 +118,7 @@ class StorageTests(unittest.TestCase):
         history = self.history()
         history.load()
         self.assertEqual([p.epoch for p in history.points('ipv4', th.KEEP_S)], [now - 60])
-        self.assertEqual(self.path.read_text(encoding='ascii'), good)
+        self.assertEqual(self.path.read_text(encoding='ascii'), good.replace('\n', ',,\n'))
 
     def test_cut_line_from_power_loss_does_not_damage_the_next_write(self):
         now = int(self.clock.now)
@@ -174,12 +174,14 @@ class RecorderTests(unittest.TestCase):
     def test_tick_feeds_rates_and_marks(self):
         ping = Mock()
         ping.take_loss_marks.return_value = {'ipv4': 1, 'ipv6': 0}
+        ping.take_worst_rtts.return_value = {'ipv4': 12.0, 'ipv6': None}
         self.recorder(ping).tick()
-        self.history.add_sample.assert_called_once_with(rates(1, 2, 3, 4), {'ipv4': 1, 'ipv6': 0})
+        self.history.add_sample.assert_called_once_with(rates(1, 2, 3, 4), {'ipv4': 1, 'ipv6': 0},
+                                                        {'ipv4': 12.0, 'ipv6': None})
 
     def test_tick_without_ping_has_no_marks(self):
         self.recorder().tick()
-        self.history.add_sample.assert_called_once_with(rates(1, 2, 3, 4), {})
+        self.history.add_sample.assert_called_once_with(rates(1, 2, 3, 4), {}, {})
 
     def test_flush_every_minute_and_rewrite_every_hour(self):
         recorder = self.recorder()
