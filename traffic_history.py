@@ -217,3 +217,80 @@ class TrafficRecorder(threading.Thread):
             self._safely(self.tick)
         self._safely(self.history.finish_bucket)
         self._safely(self.history.flush)
+
+
+GAP_S = 15
+MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 12, 12, 26
+TICK_STEP_S = {3600: 900, 4 * 3600: 3600}
+
+Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks')
+
+
+def local_hhmm(epoch):
+    return time.strftime('%H:%M', time.localtime(epoch))
+
+
+def _larger(first, second):
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return max(first, second)
+
+
+def build_chart(points, width, height, now, period_s, fmt_time=local_hhmm):
+    """Geometry only. Each pixel keeps its largest rates and worst mark, so short
+    peaks and failures survive when there are more points than pixels."""
+    x0, y0 = MARGIN_LEFT, MARGIN_TOP
+    x1, y1 = width - MARGIN_RIGHT, height - MARGIN_BOTTOM
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return None
+    span = x1 - x0
+    start = now - period_s
+    groups = {}
+    for point in sorted(points, key=lambda p: p.epoch):
+        if not start <= point.epoch <= now:
+            continue
+        x = x0 + int((point.epoch - start) / period_s * span)
+        group = groups.get(x)
+        if group is None:
+            groups[x] = dict(first=point.epoch, last=point.epoch, down=point.down,
+                             up=point.up, mark=point.mark)
+        else:
+            group['last'] = point.epoch
+            group['down'] = _larger(group['down'], point.down)
+            group['up'] = _larger(group['up'], point.up)
+            group['mark'] = max(group['mark'], point.mark)
+    ordered = [(x, groups[x]) for x in sorted(groups)]
+    peak = max((value for _, group in ordered for value in (group['down'], group['up'])
+                if value is not None), default=0)
+    top = peak or 1
+
+    def y_of(value):
+        return y1 - (value / top) * (y1 - y0)
+
+    def segments(name):
+        result, current, previous = [], [], None
+        for x, group in ordered:
+            value = group[name]
+            if current and (value is None or group['first'] - previous > GAP_S):
+                result.append(current)
+                current = []
+            if value is not None:
+                current.append((x, y_of(value)))
+            previous = group['last']
+        if current:
+            result.append(current)
+        return result
+
+    band_width = max(1, round(BUCKET_S / period_s * span))
+    bands = sorted(((x, min(x + band_width, x1), group['mark']) for x, group in ordered if group['mark']),
+                   key=lambda band: band[2])
+    step = TICK_STEP_S.get(period_s, period_s / 4)
+    tick = (int(start) + step - 1) // step * step
+    x_ticks = []
+    while tick <= now:
+        x_ticks.append((x0 + (tick - start) / period_s * span, fmt_time(tick)))
+        tick += step
+    y_ticks = [(y1, 0)] if not peak else [(y1, 0), (y_of(top / 2), top / 2), (y0, top)]
+    return Chart((x0, y0, x1, y1), segments('down'), segments('up'), bands, x_ticks, y_ticks)
