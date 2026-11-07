@@ -76,7 +76,7 @@ Arrastar o gráfico para os lados, valor ao passar o mouse, exportação e perí
 - Voltar para uma versão anterior descarta as linhas novas ao ler, sem quebrar: perde no máximo as últimas 4 h.
 
 ## Eixo de tempo
-Marcas no primeiro passo de `15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200 s` que dê no máximo 5 marcas no trecho. Com passo abaixo
+Marcas no primeiro passo de `15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200 s` que dê no máximo 5 intervalos no trecho. Com passo abaixo
 de 60 s, o rótulo inclui os segundos. Mantém a cada 15 min em 1 h e a cada 1 h em 4 h, e dá a cada 1 min em 5 min.
 
 ## Componentes
