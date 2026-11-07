@@ -116,7 +116,8 @@ class GroupTests(unittest.TestCase):
         self.assertEqual(monitor.active, 'ipv6')
         monitor.record((12, None, 12, None))
         self.assertEqual(monitor.active, 'ipv6')
-        self.assertEqual(len(self.notices), 1)
+        self.assertEqual([title for title, _ in self.notices],
+                         ['Ping: perda no IPv4', 'Ping: perda no IPv6'])
 
     def test_return_requires_60_clean_cycles_of_displayed_group(self):
         monitor = pm.PingMonitor(Metrics(), notify=False)

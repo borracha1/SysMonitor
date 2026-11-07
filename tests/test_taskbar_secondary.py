@@ -211,8 +211,10 @@ class SecondaryWidgetIntegrationTests(unittest.TestCase):
         cfg['window']['net_split'] = 'true'
         metrics = ns['Metrics']()
         metrics.net_rates = ((100, 200), (300, 400))
-        ping = Mock(mode='auto', preferred='ipv4', groups={'ipv4': ('8.8.8.8',), 'ipv6': ('::1',)})
+        ping = Mock(mode='auto', preferred='ipv4', notify_ipv4=True, notify_ipv6=True,
+                    groups={'ipv4': ('8.8.8.8',), 'ipv6': ('::1',)})
         ping.set_mode.side_effect = lambda mode: setattr(ping, 'mode', mode)
+        ping.set_family_notify.side_effect = lambda family, enabled: setattr(ping, 'notify_' + family, enabled)
         monitor = Mock()
         snapshots = {}
         for hwnd in (main_hwnd, extra_hwnd):
@@ -250,6 +252,13 @@ class SecondaryWidgetIntegrationTests(unittest.TestCase):
             for window in (primary, secondary):
                 self.assertTrue(window.net_split)
                 self.assertEqual(window._ping_mode_var.get(), 'ipv6')
+            # Real Tk variables/menus on isolated parents, never Explorer.
+            for family, owner in (('ipv4', secondary), ('ipv6', primary)):
+                getattr(owner, '_notify_' + family + '_var').set(False)
+                owner._select_ping_notify(family)
+                for window in (primary, secondary):
+                    self.assertFalse(getattr(window, '_notify_' + family + '_var').get())
+                self.assertEqual(cfg['ping']['notify_' + family], 'false')
             # Levels are per bar, preferences remain global.
             old = snapshots[extra_hwnd]
             w2 = secondary._taskbar_widths()[2]
@@ -268,6 +277,8 @@ class SecondaryWidgetIntegrationTests(unittest.TestCase):
             self.assertIs(secondary._ping_editor, editor)
             # Plain primary rebuild must not recreate secondary widgets/editor.
             primary._destroy()
+            self.assertFalse(hasattr(primary, '_notify_ipv4_var'))
+            self.assertFalse(hasattr(primary, '_notify_ipv6_var'))
             primary = ns['MonitorWindow'](master, cfg, metrics, 'taskbar', ping_monitor=ping,
                                           space_monitor=monitor, session=session)
             session.attach_primary(primary)

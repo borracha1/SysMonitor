@@ -310,7 +310,8 @@ class PingMonitor(threading.Thread):
                  interval_s=1.0, timeout_ms=1000, window=60, notify=True,
                  alert_after=1, recover_after=5, cooldown_s=60.0,
                  on_event=None, pinger_factory=IcmpPinger, notifier=show_toast,
-                 mute_after_alerts=5, mute_window_s=120, unmute_after_s=1800):
+                 mute_after_alerts=5, mute_window_s=120, unmute_after_s=1800,
+                 notify_ipv4=True, notify_ipv6=True):
         super().__init__(daemon=True, name="PingMonitor")
         self._lock = threading.RLock()
         self._generation = 0
@@ -326,9 +327,14 @@ class PingMonitor(threading.Thread):
         self.return_clean_cycles = max(1, int(return_clean_cycles))
         self._clean = {"ipv4": 0, "ipv6": 0}
         self._results = {}
+        # A first partial loss is an edge too; group replacement resets this baseline.
+        self._family_clean = {"ipv4": True, "ipv6": True}
+        self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
         self.interval_s = max(0.2, interval_s)
         self.timeout_ms = int(timeout_ms)
         self.notify = notify
+        self.notify_ipv4 = bool(notify_ipv4)
+        self.notify_ipv6 = bool(notify_ipv6)
         self.alert_after = max(1, alert_after)
         self.recover_after = max(1, recover_after)
         self.cooldown_s = cooldown_s
@@ -387,6 +393,8 @@ class PingMonitor(threading.Thread):
             timeout_ms=section.getint("timeout_ms", fallback=1000),
             window=section.getint("window", fallback=60),
             notify=section.getboolean("notify", fallback=True),
+            notify_ipv4=section.getboolean("notify_ipv4", fallback=True),
+            notify_ipv6=section.getboolean("notify_ipv6", fallback=True),
             alert_after=section.getint("alert_after", fallback=1),
             cooldown_s=section.getfloat("cooldown_s", fallback=60.0),
             mute_after_alerts=section.getint("mute_after_alerts", fallback=5),
@@ -394,6 +402,21 @@ class PingMonitor(threading.Thread):
             unmute_after_s=section.getfloat("unmute_after_s", fallback=1800),
             on_event=on_event,
         )
+
+    def set_family_notify(self, family, enabled):
+        with self._lock:
+            if family not in self.groups:
+                raise ValueError("Família de ping inválida.")
+            setattr(self, "notify_" + family, bool(enabled))
+            if not (self.notify_ipv4 or self.notify_ipv6):
+                self._alert_notified = False
+
+    def _family_notify(self, family):
+        return self.notify and getattr(self, "notify_" + family)
+
+    def _notify_targets(self, targets):
+        return tuple(ip for ip in targets for family, group in self.groups.items()
+                     if ip in group and self._family_notify(family))
 
     def set_mode(self, mode):
         with self._lock:
@@ -419,6 +442,8 @@ class PingMonitor(threading.Thread):
             self.active = self._initial_family()
             self._generation += 1
             self._results = {}
+            self._family_clean = {"ipv4": True, "ipv6": True}
+            self._family_last_notify = {"ipv4": -1e9, "ipv6": -1e9}
             self._clean = {"ipv4": 0, "ipv6": 0}
             self._samples = [deque(maxlen=self._outage_samples.maxlen) for _ in self.targets]
             self._outage_samples.clear()
@@ -453,6 +478,8 @@ class PingMonitor(threading.Thread):
         now = time.monotonic() if now is None else now
         if len(rtts) != len(self.targets):
             raise ValueError("one RTT is required for each target")
+        previous_clean = self._family_clean.copy()
+        previous_active = self.active
         results = []
         for ip, samples, rtt in zip(self.targets, self._samples, rtts):
             ok = rtt is not None
@@ -464,6 +491,7 @@ class PingMonitor(threading.Thread):
         self._update_mutes(results, now)
         for family, targets in self.groups.items():
             clean = bool(targets) and all(self._results[ip][3] for ip in targets)
+            self._family_clean[family] = clean
             self._clean[family] = self._clean[family] + 1 if clean else 0
         if self.mode == "auto":
             other = self._other(self.active)
@@ -478,6 +506,10 @@ class PingMonitor(threading.Thread):
         ok = any(result[3] for result in results)
         self._outage_samples.append(ok)
         loss = 100.0 * sum(not sample for sample in self._outage_samples) / len(self._outage_samples)
+        if (ok and self.active == previous_active and previous_clean[self.active]
+                and not self._family_clean[self.active]):
+            self._notify_family_loss(self.active, now,
+                send=now - self._family_last_notify[self.active] >= self.cooldown_s)
         self._update_alert(ok, now, loss, results)
         return results
 
@@ -494,9 +526,10 @@ class PingMonitor(threading.Thread):
                 self.on_event(f"ping: alertas reativados para {ip} após "
                               f"{self.unmute_after_s:g}s sem queda")
 
-    def _notify_loss(self, title, message, targets, now):
-        """Count loss-toast subjects before filtering, including omitted toasts."""
-        if not self.notify:
+    def _notify_loss(self, title, message, targets, now, send=True):
+        """Filter enabled families, then count even cooldown/mute-omitted subjects."""
+        targets = self._notify_targets(targets)
+        if not targets:
             return False
         if self.mute_after_alerts:
             for ip in targets:
@@ -514,12 +547,25 @@ class PingMonitor(threading.Thread):
                         f"{self.unmute_after_s / 60:g} min sem queda.")
             if all(ip in self._muted for ip in targets):
                 return False
+        if not send:
+            return False
         self._notifier(title, message)
         return True
 
+    def _notify_family_loss(self, family, now, send=True):
+        name = "IPv4" if family == "ipv4" else "IPv6"
+        failed = [ip for ip in self.groups[family] if not self._results[ip][3]]
+        title = f"Ping: perda no {name}"
+        message = f"Sem resposta de {' e '.join(failed)}; exibindo {name}."
+        self.on_event(f"{title}: {message}")
+        if send:
+            self._family_last_notify[family] = now
+        self._notify_loss(title, message, failed, now, send=send)
+
     def _switch(self, family, returning=False, now=None):
         now = time.monotonic() if now is None else now
-        previous_targets = self.groups[self.active]
+        previous_family = self.active
+        previous_targets = self.groups[previous_family]
         previous = "IPv4" if self.active == "ipv4" else "IPv6"
         name = "IPv4" if family == "ipv4" else "IPv6"
         self.active = family
@@ -529,15 +575,12 @@ class PingMonitor(threading.Thread):
             duration = f"{seconds / 60:g} min" if seconds >= 60 and seconds % 60 == 0 else f"{seconds:g} s"
             message = f"{previous} sem perda há {duration}."
         else:
-            title = f"Ping: perda no {name}"
-            failed = [ip for ip in self.groups[family] if not self._results[ip][3]]
-            message = f"Sem resposta de {' e '.join(failed)}; exibindo {name}."
+            self._notify_family_loss(family, now)
+            return
         self.on_event(f"{title}: {message}")
         if returning:
-            if self.notify and not any(ip in self._muted for ip in previous_targets):
+            if self._family_notify(previous_family) and not any(ip in self._muted for ip in previous_targets):
                 self._notifier(title, message)
-        else:
-            self._notify_loss(title, message, failed, now)
 
     def _update_alert(self, ok, now, loss, results):
         if ok:
@@ -547,7 +590,7 @@ class PingMonitor(threading.Thread):
                 dur = now - self._alert_start
                 self.on_event(f"ping: connection recovered after {dur:.0f}s "
                               f"({self._alert_lost} lost probes)")
-                if self.notify and self._alert_notified:
+                if self.notify and (self.notify_ipv4 or self.notify_ipv6) and self._alert_notified:
                     self._notifier("Conexão restabelecida",
                                    f"Instável por {dur:.0f}s · {self._alert_lost} pacote(s) perdido(s).")
                 self._alert = False
@@ -563,13 +606,14 @@ class PingMonitor(threading.Thread):
             self._alert_notified = False
             self.on_event(f"ping: packet loss detected (window loss {loss:.1f}%, "
                           f"targets {','.join(self.targets)})")
-            if self.notify and now - self._last_notify >= self.cooldown_s:
+            targets = self._notify_targets(self.targets)
+            if targets and now - self._last_notify >= self.cooldown_s:
                 self._last_notify = now
                 self._alert_notified = self._notify_loss(
                     "Perda de pacotes detectada",
-                    f"Sem resposta de {' e '.join(self.targets)}. " +
+                    f"Sem resposta de {' e '.join(targets)}. " +
                     " · ".join(f"{ip} {fmt_loss(target_loss)}"
-                               for ip, target_loss, _, _ in results), self.targets, now)
+                               for ip, target_loss, _, _ in results if ip in targets), targets, now)
 
     def run(self):
         try:

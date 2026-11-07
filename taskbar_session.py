@@ -97,6 +97,11 @@ class TaskbarSession:
                 window._net_mode_var.set(split)
                 if self.ping_monitor is not None and hasattr(window, '_ping_mode_var'):
                     window._ping_mode_var.set(self.ping_monitor.mode)
+                if self.ping_monitor is not None:
+                    for family in ('ipv4', 'ipv6'):
+                        variable = getattr(window, '_notify_' + family + '_var', None)
+                        if variable is not None:
+                            variable.set(getattr(self.ping_monitor, 'notify_' + family))
                 window._update_labels()
                 window._maintain_position()
             except Exception as exc:

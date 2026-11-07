@@ -1,4 +1,4 @@
-Atualizado em 2026-11-03 (versão 1.0.2 na versao-1.0.2; build local, sem publicação)
+Atualizado em 2026-11-06 (1.0.3 local na versao-1.0.3, sem commit; Latest v1.0.1)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -16,8 +16,8 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Versão 1.0.2 (`version.py`) na `versao-1.0.2`, somente local; release oficial publicada continua `v1.0.1`.
-Última mudança funcional: hosts da rede sem molde no taskbar e recuperação automática após recusa de HWND das células (`f002df0`, 2026-11-03). TDD real isolado: 4 regressões verdes, suíte de 190 testes OK e setup 1.0.2 gerado sem executar. Motivo real da recusa e Kbps no canto ainda sem causa conhecida; falta teste real do Mateus. Detalhes em [estado.md](estado.md).
+Versão 1.0.3 (`version.py`) local na `versao-1.0.3`, sem commit, revisada, com setup gerado, aguardando teste do Mateus. 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag nem release; a Latest continua `v1.0.1`.
+Última mudança local: preferências de toast por família IPv4/IPv6 no menu e perda parcial na família exibida por borda, com cooldown por família e silêncio por IP. Setup gerado sem executar e widget não reiniciado. Motivo real da recusa de HWND e Kbps no canto continuam sem causa conhecida. Detalhes e verificações em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |

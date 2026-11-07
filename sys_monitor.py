@@ -178,6 +178,8 @@ DEFAULTS = {
         "timeout_ms": "1000",
         "window": "60",         # cycles in the sliding loss window (~1 min at 1 s)
         "notify": "true",       # Windows toast on loss / recovery
+        "notify_ipv4": "true",
+        "notify_ipv6": "true",
         "alert_after": "1",     # consecutive lost cycles before alerting
         "cooldown_s": "60",     # min seconds between loss toasts
         "mute_after_alerts": "5",  # 0 disables per-IP unstable notification muting
@@ -1151,6 +1153,13 @@ class MonitorWindow:
                                      state="normal" if available else "disabled",
                                      command=lambda mode=value: self._select_ping_mode(mode))
             menu.add_command(label="Configurar destinos…", command=self._edit_ping_targets)
+            for family, title in (("ipv4", "Notificar IPv4"), ("ipv6", "Notificar IPv6")):
+                variable = tk.BooleanVar(master=self.master,
+                                         value=getattr(self.ping_monitor, "notify_" + family))
+                setattr(self, "_notify_" + family + "_var", variable)
+                menu.add_checkbutton(label=title, variable=variable,
+                                     state="normal" if self.ping_monitor.groups[family] else "disabled",
+                                     command=lambda value=family: self._select_ping_notify(value))
             menu.add_separator()
         if self.mode == 'taskbar':
             self._taskbar_side_var = tk.StringVar(master=self.master, value='auto')
@@ -1286,14 +1295,35 @@ class MonitorWindow:
                     cell.place(x=x, y=0, width=width, relheight=1)
                     x += width
 
+    def _ping_settings_with_groups(self, **settings):
+        # The selective writer removes targets; preserve migrated destinations first.
+        if "targets" in self.full_cfg["ping"]:
+            settings.update(targets_v4=",".join(self.ping_monitor.groups["ipv4"]),
+                            targets_v6=",".join(self.ping_monitor.groups["ipv6"]))
+        return settings
+
+    def _select_ping_notify(self, family):
+        variable = getattr(self, "_notify_" + family + "_var")
+        previous = getattr(self.ping_monitor, "notify_" + family)
+        selected = bool(variable.get())
+        try:
+            settings = self._ping_settings_with_groups(**{"notify_" + family: str(selected).lower()})
+            save_ping_settings(CONFIG_PATH, **settings)
+        except (OSError, configparser.Error) as exc:
+            variable.set(previous)
+            _log_event(f"ping: {family} notification save failed: {exc}")
+            return
+        self.full_cfg["ping"].pop("targets", None)
+        self.full_cfg["ping"].update(settings)
+        self.ping_monitor.set_family_notify(family, selected)
+        if getattr(self, "session", None) is not None:
+            self.session.sync_settings()
+        _log_event(f"ping: {family} notifications changed to {selected}")
+
     def _select_ping_mode(self, mode):
         previous = self.ping_monitor.mode
         try:
-            settings = {"mode": mode}
-            # Do not lose legacy destinations when removing its obsolete key.
-            if "targets" in self.full_cfg["ping"]:
-                settings.update(targets_v4=",".join(self.ping_monitor.groups["ipv4"]),
-                                targets_v6=",".join(self.ping_monitor.groups["ipv6"]))
+            settings = self._ping_settings_with_groups(mode=mode)
             save_ping_settings(CONFIG_PATH, **settings)
         except (OSError, configparser.Error) as exc:
             self._ping_mode_var.set(previous)
@@ -1441,6 +1471,9 @@ class MonitorWindow:
             del self._net_mode_var
         if hasattr(self, "_ping_mode_var"):
             del self._ping_mode_var
+        for name in ("_notify_ipv4_var", "_notify_ipv6_var"):
+            if hasattr(self, name):
+                delattr(self, name)
         # Secondary disposal must never interrupt the primary mainloop.
         if getattr(self, 'taskbar_hwnd', None) is None:
             self.master.quit()

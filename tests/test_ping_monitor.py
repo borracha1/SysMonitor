@@ -43,21 +43,23 @@ class PingMonitorTests(unittest.TestCase):
             monitor.record(monitor.probe(pinger), now=now)
         self.assertEqual(metrics.ping, (('8.8.8.8', 25.0, None, False),
                                         ('1.1.1.1', 0.0, 12, True)))
-        self.assertEqual(notices, [])
+        self.assertEqual(notices, [('Ping: perda no IPv4',
+                                    'Sem resposta de 8.8.8.8; exibindo IPv4.')])
 
     def test_alert_and_recovery_only_for_complete_outage(self):
         monitor, metrics, pinger, notices = self.make_monitor(
             {'8.8.8.8': [None, None, 14, 14],
              '1.1.1.1': [12, None, 12, 12]}, alert_after=1, recover_after=2)
         monitor.record(monitor.probe(pinger), now=0)
-        self.assertEqual(notices, [])
+        self.assertEqual(notices, [('Ping: perda no IPv4',
+                                    'Sem resposta de 8.8.8.8; exibindo IPv4.')])
         monitor.record(monitor.probe(pinger), now=1)
-        self.assertEqual(notices[0][0], 'Perda de pacotes detectada')
-        self.assertIn('8.8.8.8 100% · 1.1.1.1 50%', notices[0][1])
+        self.assertEqual(notices[1][0], 'Perda de pacotes detectada')
+        self.assertIn('8.8.8.8 100% · 1.1.1.1 50%', notices[1][1])
         monitor.record(monitor.probe(pinger), now=2)
-        self.assertEqual(len(notices), 1)
+        self.assertEqual(len(notices), 2)
         monitor.record(monitor.probe(pinger), now=3)
-        self.assertEqual(notices[1][0], 'Conexão restabelecida')
+        self.assertEqual(notices[2][0], 'Conexão restabelecida')
 
     def test_window_is_per_target_and_exact_size(self):
         monitor, metrics, pinger, _ = self.make_monitor(

@@ -266,9 +266,10 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual('Configurar destinos…' in labels, expected)
             self.assertEqual(labels[-1], 'Fechar')
             self.assertEqual(fake_tk.Menu.return_value.add_separator.call_count, 2 + int(expected))
-            fake_tk.Menu.return_value.add_checkbutton.assert_called_once()
-            self.assertEqual(fake_tk.Menu.return_value.add_checkbutton.call_args.kwargs['label'],
-                             'Separar IPv4/IPv6 (estimado)')
+            checks = fake_tk.Menu.return_value.add_checkbutton.call_args_list
+            self.assertEqual([call.kwargs['label'] for call in checks],
+                             ['Separar IPv4/IPv6 (estimado)'] +
+                             (['Notificar IPv4', 'Notificar IPv6'] if expected else []))
 
     def test_reconfiguration_does_not_count_as_loss(self):
         import ast

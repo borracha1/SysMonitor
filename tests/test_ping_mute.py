@@ -32,6 +32,167 @@ class PingMuteTests(unittest.TestCase):
     def info(self):
         return [notice for notice in self.notices if notice[0] == 'Alertas silenciados']
 
+    def test_displayed_family_edge_auto_and_fixed_no_continuous_repeat(self):
+        for mode in ('auto', 'ipv4', 'ipv6'):
+            with self.subTest(mode=mode):
+                family = 'ipv6' if mode == 'ipv6' else 'ipv4'
+                monitor = self.monitor(mode=mode, cooldown_s=60)
+                monitor.record((12, 12, 12), now=0)
+                failed = monitor.groups[family][0]
+                rtts = tuple(None if ip == failed else 12 for ip in monitor.targets)
+                monitor.record(rtts, now=1)
+                monitor.record(rtts, now=100)
+                self.assertEqual(self.losses(), [(f'Ping: perda no IPv{family[-1]}',
+                    f'Sem resposta de {failed}; exibindo IPv{family[-1]}.')])
+                self.assertEqual(sum('Ping: perda' in e for e in self.events), 1)
+
+    def test_family_cooldown_edges_still_count_to_mute(self):
+        monitor = self.monitor(mode='ipv4', cooldown_s=60)
+        monitor.record((12, 12, 12), now=0)
+        for now in (1, 11, 21, 31, 41):
+            monitor.record((None, 12, 12), now=now)
+            monitor.record((12, 12, 12), now=now + 1)
+        self.assertEqual(len(self.losses()), 1)
+        self.assertEqual(len(self.info()), 1)
+        self.assertEqual(list(monitor._alert_times['1.1.1.1']), [1, 11, 21, 31, 41])
+
+    def test_cooldown_independent_per_family_switch_marks_without_obeying_it(self):
+        monitor = self.monitor(cooldown_s=60, mute_after_alerts=0)
+        monitor.record((12, 12, 12), now=0)
+        monitor.record((None, 12, 12), now=1)
+        monitor.record((12, None, 12), now=2)  # switch bypasses cooldown
+        monitor.record((12, 12, 12), now=3)  # return
+        monitor.record((None, 12, 12), now=4)  # ipv4 cooldown
+        self.assertEqual(len(self.losses()), 2)
+        monitor.set_mode('ipv6')
+        monitor.record((12, 12, 12), now=5)
+        monitor.record((12, None, 12), now=6)  # ipv6 cooldown marked by switch
+        self.assertEqual(len(self.losses()), 2)
+        monitor.record((12, 12, 12), now=61)
+        monitor.record((12, None, 12), now=62)
+        self.assertEqual(len(self.losses()), 3)
+
+    def test_switch_not_duplicated_and_total_outage_does_not_create_later_edge(self):
+        monitor = self.monitor()
+        monitor.record((12, 12, 12), now=0)
+        monitor.record((12, None, 12), now=1)
+        self.assertEqual(len(self.losses()), 1)
+        self.assertEqual(list(monitor._alert_times['::1']), [1])
+        monitor.record((None, None, None), now=2)
+        self.assertEqual([t for t, _ in self.losses()],
+                         ['Ping: perda no IPv6', 'Perda de pacotes detectada'])
+        monitor.record((12, None, 12), now=3)
+        self.assertEqual(len(self.losses()), 2)
+
+    def test_set_groups_resets_edges_but_set_mode_preserves_them(self):
+        monitor = self.monitor(mode='ipv4', cooldown_s=0)
+        monitor.record((12, 12, 12), now=0)
+        monitor.record((None, 12, 12), now=1)
+        monitor.set_mode('ipv4')
+        monitor.record((None, 12, 12), now=2)
+        self.assertEqual(len(self.losses()), 1)
+        monitor.set_groups(('1.1.1.1',), ('::1', '::2'), 'ipv4')
+        monitor.record((None, 12, 12), now=3)
+        self.assertEqual(len(self.losses()), 2)  # fresh state treats first loss as an edge
+        monitor.record((12, 12, 12), now=4)
+        monitor.record((None, 12, 12), now=5)
+        self.assertEqual(len(self.losses()), 3)
+
+    def test_displayed_edge_disabled_or_notify_false_counts_nothing_but_logs(self):
+        for options in ({'notify_ipv4': False}, {'notify': False},
+                        {'notify_ipv4': False, 'notify_ipv6': False}):
+            with self.subTest(options=options):
+                monitor = self.monitor(mode='ipv4', mute_after_alerts=1, **options)
+                monitor.record((12, 12, 12), now=0)
+                monitor.record((None, 12, 12), now=1)
+                self.assertEqual(self.notices, [])
+                self.assertEqual(monitor._alert_times, {})
+                self.assertEqual(len(self.events), 1)
+                self.assertEqual(monitor.metrics.ping[0][1:], (50, None, False))
+
+    def test_hidden_family_loss_and_total_outage_do_not_emit_partial(self):
+        monitor = self.monitor(mode='ipv4')
+        monitor.record((12, None, None), now=0)
+        self.assertEqual(self.notices, [])
+        monitor.record((None, None, None), now=1)
+        self.assertEqual([title for title, _ in self.notices], ['Perda de pacotes detectada'])
+        monitor.record((None, 12, 12), now=2)
+        self.assertEqual([title for title, _ in self.notices],
+                         ['Perda de pacotes detectada', 'Conexão restabelecida'])
+
+    def test_initial_edge_lists_only_failed_ips_and_switch_bypasses_interval(self):
+        monitor = self.monitor(targets_v4=('8.8.8.8', '1.1.1.1'), cooldown_s=60,
+                               mute_after_alerts=0)
+        monitor.record((None, None, 12, 12), now=0)
+        self.assertEqual(self.notices[0], ('Ping: perda no IPv4',
+                         'Sem resposta de 8.8.8.8 e 1.1.1.1; exibindo IPv4.'))
+        monitor.record((12, 12, None, 12), now=1)
+        monitor.record((12, 12, 12, 12), now=2)
+        monitor.record((12, 12, None, 12), now=3)
+        self.assertEqual(len(self.losses()), 3)  # repeated switches ignore 60 s
+        self.assertEqual(monitor._family_last_notify['ipv6'], 3)
+        monitor.set_mode('ipv6')
+        self.assertEqual(monitor._family_last_notify['ipv6'], 3)
+        monitor.set_groups(('8.8.8.8', '1.1.1.1'), ('::1', '::2'), 'ipv4')
+        self.assertEqual(monitor._family_last_notify, {'ipv4': -1e9, 'ipv6': -1e9})
+        self.assertEqual(monitor._family_clean, {'ipv4': True, 'ipv6': True})
+
+    def test_family_config_and_runtime_validation(self):
+        cfg = configparser.ConfigParser()
+        cfg['ping'] = {}
+        monitor = pm.PingMonitor.from_config(cfg['ping'], Metrics())
+        self.assertTrue(monitor.notify_ipv4)
+        self.assertTrue(monitor.notify_ipv6)
+        cfg['ping'].update(notify_ipv4='no', notify_ipv6='false')
+        monitor = pm.PingMonitor.from_config(cfg['ping'], Metrics())
+        self.assertFalse(monitor.notify_ipv4)
+        self.assertFalse(monitor.notify_ipv6)
+        monitor.set_family_notify('ipv6', True)
+        self.assertTrue(monitor.notify_ipv6)
+        with self.assertRaises(ValueError):
+            monitor.set_family_notify('invalid', True)
+
+    def test_disabled_family_switch_return_and_mute_keep_events(self):
+        for family in ('ipv4', 'ipv6'):
+            with self.subTest(family=family):
+                monitor = self.monitor(preferred=pm.PingMonitor._other(family),
+                                       **{'notify_' + family: False}, mute_after_alerts=1)
+                failed = monitor.groups[family]
+                self.switch_cycle(monitor, 0, failed=failed)
+                self.assertEqual(self.notices, [])
+                self.assertEqual(monitor._alert_times, {})
+                self.assertEqual(len(self.events), 2)
+                self.assertEqual(monitor.active, monitor.preferred)
+
+    def test_global_toast_filters_both_ip_list_and_percentages(self):
+        for family in ('ipv4', 'ipv6'):
+            with self.subTest(family=family):
+                monitor = self.monitor(**{'notify_' + family: False})
+                monitor.record((None,) * len(monitor.targets), now=0)
+                self.assertEqual(self.notices[0][0], 'Perda de pacotes detectada')
+                for ip in monitor.groups[family]:
+                    self.assertNotIn(ip, self.notices[0][1])
+                    self.assertNotIn(ip, monitor._alert_times)
+                for ip in monitor.groups[monitor._other(family)]:
+                    self.assertIn(ip + ' 100%', self.notices[0][1])
+                monitor.record((12,) * len(monitor.targets), now=1)
+                self.assertEqual(self.notices[-1][0], 'Conexão restabelecida')
+
+    def test_both_disabled_do_not_consume_global_cooldown_or_pending_recovery(self):
+        monitor = self.monitor(notify_ipv4=False, notify_ipv6=False, cooldown_s=60)
+        monitor.record((None, None, None), now=0)
+        self.assertEqual(monitor._last_notify, -1e9)
+        self.assertFalse(monitor._alert_notified)
+        monitor.record((12, 12, 12), now=1)
+        self.assertEqual(self.notices, [])
+        monitor.set_family_notify('ipv4', True)
+        monitor.record((None, None, None), now=2)
+        self.assertTrue(monitor._alert_notified)
+        monitor.set_family_notify('ipv4', False)
+        self.assertFalse(monitor._alert_notified)
+        monitor.record((12, 12, 12), now=3)
+        self.assertEqual(len(self.notices), 1)
+
     def test_fifth_alert_mutes_once_omitted_alerts_count_and_logs_continue(self):
         monitor = self.monitor()
         for now in (0, 10, 20, 30):

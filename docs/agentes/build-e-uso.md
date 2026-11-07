@@ -1,4 +1,4 @@
-Atualizado em 2026-10-27 (branch versao-1.0; exe e instalador 1.0.0 gerados, sem teste real)
+Atualizado em 2026-11-06 (versão 1.0.3 local; preferências de notificação IPv4/IPv6)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -54,8 +54,9 @@ python3 create_shortcut.py
 - Verificação 2026-10-25 no PowerShell sem TMPDIR: 114 testes em 10,995 s, OK (também 114 em 9,831 s pelo bash); seis casos novos focados em 2,800 s, OK; `py_compile` de 25 fontes, OK. Captura Tk real isolada com PowerShell/System.Drawing. Configuração local preservada por SHA-256. Pendente conferência do Mateus após reinício manual autorizado.
 
 ## Opções de silêncio em [ping]
+- `notify_ipv4=true` e `notify_ipv6=true`: preferências independentes de toast, lidas também na bandeja (sem menu novo nela). `notify=false` desliga tudo. Menu do widget: `Notificar IPv4`/`Notificar IPv6` após destinos, sem submenu, grupo vazio desabilitado. Gravação seletiva/atômica precede aplicação, preserva destinos legados e sincroniza todas as barras; erro restaura a seleção. Sem regravar defaults no config existente.
 - `mute_after_alerts=5`: quantidade de assuntos de toasts de PERDA por IP para silenciar. `0` desliga o recurso.
-- `mute_window_s=120`: janela móvel em segundos (limite inclusivo). Conta avisos de troca por perda e de perda global, inclusive omitidos pelo silêncio; o cooldown global existente continua valendo, e eventos impedidos por cooldown/notify=false não são candidatos a toast.
+- `mute_window_s=120`: janela móvel em segundos (limite inclusivo). Conta avisos de troca por perda, de borda na família exibida e de perda global, inclusive omitidos pelo silêncio. Bordas impedidas pelo cooldown por família também contam e podem emitir informe de silêncio; o cooldown global existente continua valendo. notify=false e famílias desligadas não acumulam assuntos.
 - `unmute_after_s=1800`: tempo sem NENHUMA resposta falha daquele IP para reativar; uma falha reinicia a espera, mesmo no grupo inativo. Reativação limpa o histórico daquele IP; set_groups limpa todos. Estado em memória, sem persistência de silêncio.
 - Defaults declarados em sys_monitor.py e lidos em PingMonitor.from_config, compartilhado pelo widget e pela edição de bandeja. Config existente recebe defaults apenas em memória: o config.ini local não foi alterado nesta tarefa. Sem nova dependência, privilégio ou driver.
 

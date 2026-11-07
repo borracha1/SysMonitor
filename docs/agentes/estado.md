@@ -1,4 +1,4 @@
-Atualizado em 2026-11-03 (versão 1.0.2 na versao-1.0.2; testes e build locais, sem publicação)
+Atualizado em 2026-11-06 (1.0.2 publicada na main em 2026-11-04; 1.0.3 local, sem commit)
 
 # Estado e histórico
 ## Base documentada
@@ -154,11 +154,23 @@ Atualizado em 2026-11-03 (versão 1.0.2 na versao-1.0.2; testes e build locais, 
 - Sem push, tag, release, merge, troca de branch ou instalação. Aplicativo existente não foi encerrado/reiniciado, barra real e Explorer não foram alterados. Sem dependência, driver ou elevação novos na aplicação.
 - Pendente: teste real do Mateus. Motivo real da recusa de CreateWindowEx continua desconhecido; o `Kbps` ocasional no canto superior esquerdo também segue sem causa conhecida (não se comprovou que venha do SysMonitor). Não foi reinvestigado nem alegado como corrigido.
 
+## Marco 2026-11-06 · 1.0.3: notificações por família (versao-1.0.3, local, sem commit)
+- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; a Latest continua `v1.0.1`. 1.0.3 somente local, revisada pelo Claude, aguardando teste do Mateus. Setup `dist/SysMonitor-Setup-1.0.3.exe` gerado sem executar (SHA-256 `CB179F7AD56E066274969B4085AA385BF2C6878A5B8217D8C232B1F5291045AE`).
+- `notify_ipv4`/`notify_ipv6` com defaults true, leitura `getboolean`, alteração sob lock e filtro antes da contagem por IP. Retorno considera família anterior; perda global filtra lista e percentuais. Ambas desligadas limpam recuperação pendente e não consomem cooldown global; coleta, métricas e logs preservados.
+- Borda de perda na família exibida em auto/fixo, sem repetição contínua, duplicação da troca ou toast parcial durante queda total. Estado de ambas atualizado inclusive em queda total; ciclo inicial/primeiro após `set_groups` tratado como borda, conforme expectativa expressa da tarefa. Cooldown independente por família; trocas marcam mas não obedecem ao intervalo. Bordas omitidas por intervalo contam para silenciar e permitem o informe. `set_groups` limpa; `set_mode` preserva.
+- Menu direto após destinos: `Notificar IPv4`/`Notificar IPv6`, grupo vazio desabilitado. Persiste antes de aplicar, restaura variável/loga falha; helper compartilhado com modo preserva destinos legados. Sincronização entre barras e liberação de variáveis na destruição.
+- TDD bloco 1: 16 testes, `FAILED (errors=6)`: construtor não aceitava notify_ipv4/notify_ipv6 e atributos inexistiam. Após implementação, 16 OK (0.024 s). Bloco 2: 21 testes, `FAILED (failures=6)`: bordas em auto/fixo ausentes, zero perdas em vez de uma e contagem de silêncio ausente. Após implementação, suíte de ping identificou apenas expectativas antigas incompatíveis com a perda parcial nova.
+- TDD bloco 3: após corrigir um fake novo sem `_ping_mode_var`, 5 testes, `FAILED (failures=1, errors=7)`: defaults/menu/handler ausentes e sincronização não chamava set. Persistência usa config temporário; falhas OSError/configparser.Error, ordem antes de aplicar, migração em ambos handlers, grupos vazios e callbacks cobertos. Integração Tk real em pais isolados verifica variáveis de ambas as barras e destruição; sem tocar no Explorer.
+- TDD bloco 4: `test_version` falhou com `'1.0.2' != '1.0.3'` antes de alterar version.py. Expectativas de versão e self-check atualizadas. Documentação revisada por diff, sem teste RED artificial para texto.
+- Testes antigos alterados por contrato: `test_independent_loss_and_failed_rtt` passa a esperar perda IPv4; `test_alert_and_recovery_only_for_complete_outage` espera parcial→queda total→recuperação; `test_loss_in_both_groups_keeps_current_family` inclui aviso parcial IPv4 inicial, preservando todas as seleções. `test_menu_only_offers_editor_when_enabled_with_monitor` passa a incluir as duas caixas novas. `test_version` e os três self-checks ajustados para 1.0.3. Fakes de `test_separator_immediately_before_close_in_every_mode` e `test_real_widgets_share_actions_editor_data_and_global_close` ganharam booleanos novos; expectativas anteriores preservadas, integração ampliada.
+- Verificação final: `py -3.12 -m unittest discover -s tests` → `Ran 207 tests in 22.513s`, `OK` (base inicial: 190 OK em 20.064 s). `git diff --check` e py_compile das fontes de produção alteradas e novos testes principais aprovados. Sem toast real nos testes: notificadores falsos nos ciclos de perda.
+- HEAD inicial/final `062332f5ecc95bc4e7d0b6d27456b716eba09e95`, branch `versao-1.0.3`; config.ini preservado, SHA-256 inicial/final `381286c142d75973b7fa2a86fa51e8810da8e59d408c2a5efb501c1295561073` (modificação prévia do Mateus continua no status). Sem commit/push/tag/release, troca de branch, build, instalação ou comando para encerrar/reiniciar widget. Pendente apenas validação interativa do Mateus/revisão e instalador pelo Claude; testes isolados não substituem o ambiente real.
+
 ## Limitações e próximos passos
 - Sem histórico/gráficos; README menciona gráfico como possibilidade, não compromisso.
 - Temperatura CPU depende de LHM em execução; GPU atende apenas primeira NVIDIA.
 - Suíte `unittest`; build distribuível na branch versao-1.0, sem teste real ainda.
-- 1.0.2 implementada e verificada localmente na `versao-1.0.2`; aguarda teste real do Mateus, sem publicação.
+- 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag/release; Latest continua `v1.0.1`. 1.0.3 local na `versao-1.0.3`, sem commit, com setup gerado, aguardando teste do Mateus.
 - Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.
 - Riscos de coleta/concorrência estão em [armadilhas.md](armadilhas.md); não foram corrigidos nesta tarefa só de documentação.

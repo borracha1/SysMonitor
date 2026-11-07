@@ -38,7 +38,8 @@ class TaskbarSideMenuTests(unittest.TestCase):
                     self.window.mode = mode
                     self.window.ping_enabled = ping_enabled
                     self.window.ping_monitor = SimpleNamespace(
-                        mode='auto', groups={'ipv4': ['1.1.1.1'], 'ipv6': []})
+                        mode='auto', notify_ipv4=True, notify_ipv6=True,
+                        groups={'ipv4': ['1.1.1.1'], 'ipv6': []})
                     self.window._bind_menu()
                     menu = self.ns['tk'].Menu.return_value
                     entries = [c for c in menu.method_calls if c[0].startswith('add_')]
