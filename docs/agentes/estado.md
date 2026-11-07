@@ -174,7 +174,8 @@ Atualizado em 2026-11-06 (1.1.0 implementada na versao-1.1, commits locais, sem 
 - Testes antigos ajustados somente como previsto: `test_main_executes_reconfigurations_without_delay_or_fallback` recebe fakes/cores e verifica start/stop/join/close; `test_version` e três expectativas de self-check recebem 1.1.0. Nenhum outro teste antigo alterado.
 - Captura Tk real: `D:/dev/temp/sysmonitor-1.1/janela.png`, 800x360, dados sintéticos de conferência em memória (picos, buraco, duas marcas), sem usar CSV real. Rótulos sem sobreposição, download azul/upload verde e faixas nas duas intensidades conferidos. Script e PowerShell filho encerrados; zero processos da conferência restantes.
 - Sem desvio funcional do plano; um patch de edição precisou ser reaplicado após releitura. config.ini não alterado nem adicionado; mudança local prévia do Mateus permanece. Sem push/tag/release/troca de branch/build/instalação ou reinício do widget; barra real intocada.
-- Pendente: revisão pelo Claude, geração do instalador e teste interativo do Mateus (clique na barra/Explorer/DPI e reinício real). Checklist de segurança seção A deve ser reconferido antes de release, não realizada aqui.
+- Revisão do Claude feita em 2026-11-06: código conferido, gravador rodado 15 s com coleta e pings reais em pasta temporária (soma v4+v6 igual ao total). Setup `dist/SysMonitor-Setup-1.1.0.exe` gerado sem executar (SHA-256 `d2aa583ae56499176321d0e9cfa8ce08472eccfdb268237c754ffe1d6ca7bf45`).
+- Pendente: teste interativo do Mateus (clique na barra/Explorer/DPI e reinício real). Checklist de segurança seção A deve ser reconferido antes de release, não realizada aqui.
 
 ## Revisão 2026-11-06 · legibilidade do histórico 1.1.0
 - Legendas de perda separadas em marca colorida e texto FG, sem mudar as faixas nem a ordem; seleção dos botões azul/branco, demais com cores do sistema. Comentário de baseline do ping reposicionado; índice corrigido para 1.1.0 na versao-1.1.
