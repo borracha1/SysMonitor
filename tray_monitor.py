@@ -33,6 +33,7 @@ from datetime import datetime
 
 from metrics_collector import Metrics, Collector
 from ping_monitor import PingMonitor, ping_marker, fmt_ping_line
+from top_processes import TopProcessesMonitor, tray_tooltip
 
 APP_NAME = "SysMonitorTray"
 CONFIG_PATH = data_dir() / "config.ini"
@@ -376,30 +377,32 @@ def usage_line_colors(m, metric, limits):
     return result
 
 
-def render_cpu(m):
+def render_cpu(m, top=None):
+    """`top`: TopLists from top_processes (or None); its CPU programs go in the tooltip."""
     cpu = f"{m['cpu_percent']:.0f}%"
     temp = f"{m['cpu_temp']:.0f}°" if m["cpu_temp"] is not None else "--"
     lines = [cpu, temp]
-    tooltip = f"CPU: {m['cpu_percent']:.0f}%  {temp}"
-    if m["cpu_temp_error"]:
-        tooltip += "\n⚠ LibreHardwareMonitor não está rodando (sem leitura de temperatura)"
+    warning = "⚠ LibreHardwareMonitor não está rodando (sem leitura de temperatura)" if m["cpu_temp_error"] else None
+    tooltip = tray_tooltip(f"CPU: {m['cpu_percent']:.0f}%  {temp}", "cpu", top, warning)
     return lines, tooltip
 
 
-def render_gpu_mem(m):
+def render_gpu_mem(m, top=None):
+    """`top`: TopLists from top_processes (or None); its memory programs go in the tooltip."""
+    warning = None
     if m["gpu_usage"] is not None:
         gpu = f"{m['gpu_usage']:.0f}%"
         gtemp = f"{m['gpu_temp']:.0f}°" if m["gpu_temp"] is not None else "--"
         lines = [gpu, gtemp]
-        tooltip = f"GPU: {gpu}  {gtemp}   |   MEM: {m['mem_percent']:.0f}%"
+        head = f"GPU: {gpu}  {gtemp}   |   MEM: {m['mem_percent']:.0f}%"
     else:
         # No GPU reading (NVML failed or no NVIDIA GPU) — fall back to
         # showing memory, which is always available via psutil.
         lines = [f"{m['mem_percent']:.0f}%", "MEM"]
-        tooltip = f"MEM: {m['mem_percent']:.0f}%"
+        head = f"MEM: {m['mem_percent']:.0f}%"
         if m["gpu_error"]:
-            tooltip += "\n⚠ Sem leitura da GPU (NVML)"
-    return lines, tooltip
+            warning = "⚠ Sem leitura da GPU (NVML)"
+    return lines, tray_tooltip(head, "mem", top, warning)
 
 
 _wndproc_ref = None  # keep the ctypes callback alive for the process lifetime
@@ -418,6 +421,11 @@ def run():
     ping = PingMonitor.from_config(cfg["ping"], metrics)
     if ping:
         ping.start()
+
+    # Top 3 programs for the CPU/memory tooltips: sampled on its own thread, read here.
+    top = TopProcessesMonitor(log=lambda message: _log_crash("top-processes", RuntimeError, RuntimeError(message), None))
+    top.set_active("tray", True)
+    top.start()
 
     from usage_limits_ui import TrayLimitsPreferences
     preferences = TrayLimitsPreferences(cfg, CONFIG_PATH)
@@ -458,8 +466,8 @@ def run():
 
     slots = [
         TrayIconSlot(hwnd, 1, render_net),
-        TrayIconSlot(hwnd, 2, render_cpu, color_fn=lambda m: usage_line_colors(m, "cpu", preferences.limits)),
-        TrayIconSlot(hwnd, 3, render_gpu_mem, color_fn=lambda m: usage_line_colors(m, "gpu", preferences.limits)),
+        TrayIconSlot(hwnd, 2, lambda m: render_cpu(m, top.snapshot()), color_fn=lambda m: usage_line_colors(m, "cpu", preferences.limits)),
+        TrayIconSlot(hwnd, 3, lambda m: render_gpu_mem(m, top.snapshot()), color_fn=lambda m: usage_line_colors(m, "gpu", preferences.limits)),
     ]
 
     # Wait one collector tick so the first icons show real data, not zeros.
@@ -491,6 +499,7 @@ def run():
         for slot in slots:
             slot.remove()
         collector.stop()
+        top.stop()
         if ping:
             ping.stop()
 
