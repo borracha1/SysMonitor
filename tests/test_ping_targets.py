@@ -151,7 +151,7 @@ class LifecycleTests(unittest.TestCase):
         clock = Mock()
         clock.monotonic.return_value = 0
         logs = Mock()
-        recorder, history_ui = Mock(), Mock()
+        recorder, history_ui, top = Mock(), Mock(), Mock()
         ns = load_definitions('sys_monitor.py', {'main'}, {
             'ensure_single_instance': Mock(), 'load_config': lambda: cfg,
             '_enable_dpi_awareness': Mock(), 'Metrics': Metrics, 'Collector': Mock(),
@@ -162,6 +162,7 @@ class LifecycleTests(unittest.TestCase):
             'wait_for_taskbar': Mock(return_value=True), 'time': clock, '_log_event': logs,
             'TrafficHistory': Mock(), 'TrafficRecorder': Mock(return_value=recorder),
             'TrafficHistoryWindow': Mock(return_value=history_ui), 'fmt_speed': Mock(),
+            'TopProcessesMonitor': Mock(return_value=top),
             'data_dir': lambda: Path('.')})
         ns['main']()
         self.assertEqual(factory.call_count, 7)
@@ -172,6 +173,8 @@ class LifecycleTests(unittest.TestCase):
         recorder.stop.assert_called_once()
         recorder.join.assert_called_once_with(timeout=2)
         history_ui.close.assert_called_once()
+        top.start.assert_called_once()
+        top.stop.assert_called_once()
 
     def test_save_failure_does_not_apply_and_success_closes_first(self):
         from test_ping_views import PingViewTests, FakeLabel

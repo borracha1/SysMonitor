@@ -48,6 +48,8 @@ from ping_config import save_ping_settings, save_window_settings
 from net_split import PacketCounters, split_rates, net_column_width, net_family_at, is_click
 from traffic_history import TrafficHistory, TrafficRecorder
 from traffic_history_ui import TrafficHistoryWindow
+from top_processes import TopProcessesMonitor
+from hover_tooltip import HoverTooltip
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
 from taskbar_session import TaskbarSession
 from screen_side import screen_key, load_side, save_side, monitor_device
@@ -393,6 +395,7 @@ def _win_rect(hwnd):
 
 
 TRAFFIC_HISTORY_UI = None  # One process-wide window; set by main().
+TOP_PROCESSES = None  # One process-wide sampler of the top 3 programs; set by main().
 
 
 def _cursor_pos():
@@ -762,6 +765,7 @@ class MonitorWindow:
             self._bind_drag()
             self._bind_menu()
             self._bind_traffic_click()
+            self._bind_hover()
         except Exception:
             if self.taskbar_hwnd is not None:
                 self._destroy()
@@ -1323,6 +1327,47 @@ class MonitorWindow:
         if getattr(self, "click_catcher", None) is not None:
             self.click_catcher.bind("<Button-1>", lambda event: self._on_net_click())
 
+    def _bind_hover(self):
+        """Tooltip with the top 3 programs over the CPU and MEM labels. Like the menu and the
+        click, bound on the Toplevel and on the taskbar click catcher (the colour-keyed text
+        only gets events on its strokes); the label under the cursor comes from Windows."""
+        self._hover = None
+        monitor = globals().get("TOP_PROCESSES")
+        if monitor is None:
+            return
+        self._hover = HoverTooltip(self.master, monitor, self, self._hover_hit,
+                                   self.cfg["bg_color"], self.cfg["fg_color"],
+                                   ("Segoe UI", self.cfg.getint("font_size")))
+        for target in (self.root, getattr(self, "click_catcher", None)):
+            if target is not None:
+                for sequence in ("<Motion>", "<Enter>", "<Leave>"):
+                    target.bind(sequence, self._hover_event, add="+")
+
+    def _hover_event(self, event):
+        if not getattr(self, "_closing", False) and getattr(self, "_hover", None) is not None:
+            self._hover.pointer_moved()
+
+    def _hover_hit(self):
+        """(kind, screen rect) of the CPU or MEM label under the Windows cursor, or None."""
+        if getattr(self, "_closing", False):
+            return None
+        x, y = _cursor_pos()
+        for kind, labels in (("cpu", (self.lbl_cpu, self.lbl_cpu_temp)), ("mem", (self.lbl_mem,))):
+            rects = [_win_rect(label.winfo_id()) for label in labels if label.winfo_ismapped()]
+            rects = [rect for rect in rects if rect is not None]
+            if not rects:
+                continue
+            left, top = min(r.left for r in rects), min(r.top for r in rects)
+            right, bottom = max(r.right for r in rects), max(r.bottom for r in rects)
+            if left <= x < right and top <= y < bottom:
+                return kind, (left, top, right, bottom)
+        return None
+
+    def _close_hover(self):
+        hover, self._hover = getattr(self, "_hover", None), None
+        if hover is not None:
+            hover.close()
+
     def _on_net_click(self):
         if getattr(self, "_closing", False):
             return
@@ -1489,6 +1534,7 @@ class MonitorWindow:
         if self._closing:
             return
         self._closing = True
+        self._close_hover()
         self._close_ping_editor()
         if self._after_id is not None:
             try:
@@ -1660,6 +1706,10 @@ def main():
                                               cfg["window"]["accent_up"], cfg["window"]["accent_down"],
                                               ping_targets=lambda: dict(ping.groups) if ping else {})
 
+    global TOP_PROCESSES
+    TOP_PROCESSES = TopProcessesMonitor(log=_log_event)
+    TOP_PROCESSES.start()
+
     space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
     if space_monitor is not None:
         space_monitor.start()
@@ -1722,6 +1772,7 @@ def main():
         recorder.stop()
         recorder.join(timeout=2)  # Final write; never hold the exit on a blocked disk.
         collector.stop()
+        TOP_PROCESSES.stop()
         if ping:
             ping.stop()
 
