@@ -1,4 +1,4 @@
-Atualizado em 2026-11-07 (versão 1.1.0 local; histórico com ping e CSV compatível)
+Atualizado em 2026-11-13 (versão 1.1.0 local; CSV de 11 colunas e top 3 de processos)
 
 # Execução, configuração e verificação
 ## Ambiente
@@ -62,8 +62,8 @@ python3 create_shortcut.py
 
 ## Arquivo de histórico (1.1.0)
 - Widget: `data_dir()/trafego-historico.csv`; fonte = raiz do projeto, exe = `%APPDATA%\SysMonitor`. Ignorado por `trafego-historico.csv*`, inclusive temporários.
-- Sem cabeçalho, 9 colunas: `epoch,v4_down,v4_up,v6_down,v6_up,v4_mark,v6_mark,v4_ping,v6_ping`; velocidades inteiras em bytes/s, vazio quando sem medição; marcas 0/1/2 = nenhuma/parcial/total. Ping é o pior tempo de resposta do intervalo, arredondado em ms; vazio sem resposta e 0 válido. Sem IPs ou dados de navegação.
-- Lê também o formato anterior de 7 colunas (ping vazio) e arquivos mistos; reescrita inicial converte para 9. Outras quantidades de colunas e ping negativo são descartados. [Spec desta etapa](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md).
+- Sem cabeçalho, 11 colunas: `epoch,v4_down,v4_up,v6_down,v6_up,v4_mark,v6_mark,v4_ping1,v4_ping2,v6_ping1,v6_ping2`; velocidades inteiras em bytes/s, vazio quando sem medição; marcas 0/1/2 = nenhuma/parcial/total. Ping é o pior tempo de resposta do intervalo POR IP (posição 1 e 2 do grupo), arredondado em ms; vazio sem resposta e 0 válido. Sem IPs ou dados de navegação.
+- Lê também 7 colunas (sem ping) e 9 colunas (um ping por família): o de 9 vira "pior dos dois", gravado como `ping1,-1` (`-1` na coluna do IP 2 marca essa origem). Arquivos mistos funcionam; a reescrita inicial grava tudo em 11. Outras quantidades de colunas, ping negativo e `-1` fora da coluna do IP 2 são descartados. [Spec do ping](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md).
 - Médias de 5 s, gravação a cada minuto e ao sair, retenção de 4 h; limpeza atômica ao iniciar e a cada hora. Leitura descarta linhas inválidas, antigas e mais de 60 s futuras. Valores estimados pela proporção de pacotes.
 - Ver [spec](../superpowers/specs/2026-11-06-historico-trafego-design.md). Testes usam pastas temporárias; conferência visual somente em `D:/dev/temp/sysmonitor-1.1/`.
 - Validação em 2026-11-07: `py -3.12 -m unittest discover -s tests` → `Ran 351 tests in 25.192s`, `OK`; `py -3.12 sys_monitor.py --verificar` → `SysMonitor 1.1.0 (widget)`, Tcl 8.6.15, código 0. Sem build/instalação nesta etapa; novo instalador fica para o Claude após revisão.
@@ -94,3 +94,4 @@ python3 create_shortcut.py
 - `build/`, `dist/` e `.venv-build/` ficam fora do Git. Arquivos `.ps1` só ASCII; `.iss` e `LEIA-ME.txt` em UTF-8 com BOM.
 - Verificação 2026-10-27: 147 testes OK; `build.ps1` completo saiu 0 (Inno 6.7.3); setup com 16.972.379 bytes, SHA-256 `07c6021ac770da1dc3e8e2b7432de72475db21ef6fa23d650e05e42719ae83d0`. Setup ainda não executado: teste real no Windows Sandbox pendente (roteiro no fim do plano).
 - 2026-10-27 Sandbox, 1ª instalação limpa: PawnIO `-install -silent` -> 0 sem reinício; LHM copiado; tarefa criada e iniciada (0); widget abriu. Escolha única de inicialização (3fa89b0): 150 testes OK, setup 16.973.236 bytes, SHA-256 `d3d4ed8413dca41a1725b32019615512bbaad9041cbaa72edf9ba6f184aec7cc`. Setup e exes não são assinados: Smart App Control ligado bloqueia (decisão pendente: assinar ou instruir).
+- Validação em 2026-11-13: `py -3.12 -m unittest discover -s tests` → `Ran 433 tests`, `OK`; `--verificar` do widget e da bandeja → código 0. Sem build/instalação nesta etapa.

@@ -1,4 +1,4 @@
-Atualizado em 2026-11-07 (1.1.0 com zoom, seleção, filtro e ping; versao-1.1, local, sem push)
+Atualizado em 2026-11-13 (1.1.0 com ping por IP no histórico e top 3 de CPU/MEM; versao-1.1, local, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -205,6 +205,17 @@ Atualizado em 2026-11-07 (1.1.0 com zoom, seleção, filtro e ping; versao-1.1, 
 - Pendências de verificação remanescentes: uso efetivo da edição de bandeja; o que já foi confirmado está em `Verificações de 2026-10-08`.
 - Confirmar manualmente comportamento da bandeja após restart de Explorer; código não implementa re-registro.
 - Riscos de coleta/concorrência estão em [armadilhas.md](armadilhas.md); não foram corrigidos nesta tarefa só de documentação.
+
+## Ping por IP e top 3 de CPU/MEM (2026-11-13)
+- Pedido do Mateus (registro em `D:/dev/memoria-compartilhada/pedidos/2026-11-13-claude-sysmonitor-ping-por-ip-top3.md`): a latência mostrava só o pior RTT da família e faltava ver os 3 programas que mais usam memória e CPU.
+- Parte 1: `PingMonitor.take_worst_rtts()` devolve `{familia: [pior_ip1, pior_ip2]}` (por posição do destino, zerado ao ler e em `set_groups`). Histórico em CSV de 11 colunas (`v4_ping1,v4_ping2,v6_ping1,v6_ping2`); gráfico com duas linhas (IP 1 `#c9a0ff`, IP 2 `#ffb454`) na mesma escala de ms; legenda `ping <IP atual>` por posição e clicável; resumo da seleção com cada IP.
+- Decisão própria: ping de linhas de 9 colunas (um por família, "pior dos dois") grava-se na coluna do IP 1 com `-1` na coluna do IP 2. Assim sobrevive às reescritas de 11 colunas e a tela mostra uma terceira série, `ping (pior dos dois)` (`#8fd6c4`), só quando há esses pontos no trecho. `-1` só é aceito na coluna do IP 2 e só com IP 1 preenchido.
+- Decisão própria: posição sem IP configurado não aparece na legenda; se houver dados antigos nela, aparece `ping`/`ping 2` sem endereço, para não deixar linha sem legenda. A janela recebe os IPs de `PingMonitor.groups` por `ping_targets` (chamável).
+- Parte 2: `top_processes.py` (puro) soma por nome (sem distinguir maiúsculas), CPU em % da máquina e memória (working set) com % da RAM, ignora pid 0 e `System Idle Process`. Decisão própria: a leitura NÃO usa `Process.cpu_percent` do psutil, que custou ~4 s por amostra neste PC (473 processos); usa uma chamada `NtQuerySystemInformation(SystemProcessInformation)` por ctypes (~12 ms), com delta de CPU por pid + hora de criação, conferida na partida contra o próprio processo e com `psutil_reader` como alternativa lenta.
+- Widget: `hover_tooltip.py` mostra um Toplevel do root oculto (nunca filho do Explorer) acima do rótulo (abaixo se faltar espaço). `TopProcessesMonitor` amostra a cada 2 s em thread própria SÓ enquanto há tooltip aberto, com leitura de preparo de 0,5 s quando os dados estão velhos. O rótulo sob o mouse vem de `GetCursorPos` + `GetWindowRect` (como o clique da rede), pois no modo taskbar o texto colorkey só recebe Enter/Leave nos traços. Eventos ligados ao Toplevel e à apanhadora alpha=1; um poll de 250 ms esconde o tooltip quando o cursor sai.
+- Bandeja: tooltip do ícone de CPU e do ícone 3 (GPU/MEM; o fallback MEM também) com até 3 linhas `nome valor`, nomes cortados com `…` para caber em 127 caracteres; o aviso (LHM/NVML) só fica se ainda couber. A bandeja amostra continuamente (2 s) porque o tooltip do ícone é estático.
+- TDD em todas as etapas; suíte completa `Ran 433 tests`, OK; `--verificar` do widget e da bandeja com código 0. Não conferido: o tooltip no Explorer real (o widget em execução não foi reiniciado); só Tk real isolado, com a janela criada, preenchida pela amostragem real e destruída. Instalador não gerado.
+- Commits locais na `versao-1.1`: ping por IP no histórico; módulo `top_processes`; bandeja; tooltip do widget; documentação.
 
 ## Manutenção
 - Ao fechar marco: atualizar este estado, cabeçalhos e áreas alteradas com o commit de código de referência.

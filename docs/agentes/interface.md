@@ -1,4 +1,4 @@
-Atualizado em 2026-11-07 (versão 1.1.0 local; zoom, seleção, filtro e ping no histórico)
+Atualizado em 2026-11-13 (versão 1.1.0 local; ping por IP no histórico e tooltip do top 3)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -23,6 +23,11 @@ Atualizado em 2026-11-07 (versão 1.1.0 local; zoom, seleção, filtro e ping no
 - Coordenadas do menu no modo taskbar vêm de `GetCursorPos`, não de Tk.
 - Eventos de menu usam bind do Toplevel, não `bind_all`, para sobreviver à reconstrução.
 
+## Tooltip do top 3 (widget e bandeja, 2026-11-13)
+- Widget: passar o mouse no rótulo de CPU (uso + temperatura) ou de MEM abre um tooltip com `Maiores em CPU` / `Maiores em memória` e 3 linhas, `chrome.exe  12%` e `chrome.exe  1,8 GB (11%)`, nas cores do widget, acima do rótulo. Funciona em taskbar, docked e floating; some ao sair (poll de 250 ms) e a amostragem só roda com ele aberto (2 s). MEM oculto no nível 2 de espaço não é alvo. Clique e menu direito seguem inalterados (os binds de hover usam `add="+"`).
+- Detecção por cursor do Windows, não por Enter/Leave do Tk: no modo taskbar o texto colorkey só recebe eventos nos traços; por isso os binds ficam no Toplevel e na apanhadora alpha=1.
+- Bandeja: tooltip do ícone de CPU e do ícone 3 (GPU/MEM) com até 3 linhas `nome valor`; nomes cortados com `…`, total ≤ 127 caracteres, aviso de LHM/NVML só se couber.
+
 ## Histórico de tráfego (widget, 1.1.0)
 - Clique esquerdo na coluna de rede abre IPv4/IPv6 conforme a metade clicada (ambas as linhas). Sem split visível, abre a última família, inicialmente IPv4. Fora da rede não abre; floating distingue clique de arraste pela tolerância de 3 px.
 - Menu `Histórico de tráfego…` antes de limites, disponível mesmo sem ping. Janela única do processo, filha da raiz oculta: sobrevive à reconstrução do widget/Explorer, e todas as barras a reutilizam.
@@ -30,6 +35,7 @@ Atualizado em 2026-11-07 (versão 1.1.0 local; zoom, seleção, filtro e ping no
 - Zoom de 25% pela roda (âncora sob o mouse, centro fora do gráfico), botões +/− e teclas +, =, − e teclado numérico (centro). Limites de 1 min a 4 h, deslizando para dentro da retenção e antes de agora.
 - Arraste esquerdo desenha faixa limitada ao gráfico; movimento menor que 4 px não seleciona. Soltar fixa o trecho (mínimo 1 min); direita→esquerda também funciona. Atualização durante arraste não apaga a faixa nem muda o trecho de referência. Esc cancela o arraste; fora dele fecha.
 - Resumo só no modo parado, com quebra de linha: início/fim, pico e média das medidas visíveis e intervalos de 5 s com falha, calculados antes da redução por pixel. Trecho vazio mostra `Sem dados neste trecho`.
+- Ping por IP (2026-11-13): duas linhas, `ping <IP>` (lilás `#c9a0ff`, posição 1) e `ping <IP>` (laranja `#ffb454`, posição 2), com o IP atual da configuração da família mostrada; posição sem IP não aparece. Mesmo eixo de ms à direita (pico = maior dos dois). Pontos antigos de 9 colunas aparecem como `ping (pior dos dois)` (`#8fd6c4`), só quando estão no trecho. Cada item da legenda filtra a própria linha; o resumo da seleção traz pico e média de cada IP.
 - Legenda clicável: download, upload, ping e perda (as duas marcas juntas). Clique isola; outro troca; repetir o ativo mostra tudo. Ativo com fundo destacado. Velocidades dividem eixo esquerdo ajustado ao filtro; ping lilás `#c9a0ff` tem eixo próprio em ms à direita, incluindo 0 ms. Só perda mantém apenas o eixo de tempo; dados antigos sem ping não desenham linha/eixo de ping.
 - Canvas preserva cores configuradas, buracos acima de 15 s e marcas de perda independentes dos toasts. Janela única redimensionável, centrada na tela do clique, com cancelamento do timer ao fechar. Título explicita valores estimados.
 - Conferência Tk real isolada em 2026-11-07, 800x400: `D:/dev/temp/sysmonitor-1.1/janela-ao-vivo.png`, `janela-parada.png` e `janela-filtro.png`. Eixos/botões/legenda sem sobreposição, resumo acima do gráfico e filtro destacado; script/filhos encerrados. Sem tocar no widget/Explorer real.
