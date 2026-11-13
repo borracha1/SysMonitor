@@ -80,6 +80,65 @@ class PingAxisTests(unittest.TestCase):
         result = chart(points, span=FOUR)
         self.assertEqual(result.ping_ticks[-1][1], 900)
 
+class TwoPingTests(unittest.TestCase):
+    def test_each_ip_has_its_own_line_on_the_same_ms_scale(self):
+        result = chart([P(NOW - 20, 1, 1, 0, 10, 100), P(NOW - 10, 1, 1, 0, 50, 20)])
+        _, y0, _, y1 = result.plot
+        self.assertEqual(result.ping_ticks, [(y1, 0), ((y0 + y1) / 2, 50), (y0, 100)])
+        self.assertEqual([y for _, y in result.ping2[0]], [y0, y1 - 20 / 100 * (y1 - y0)])
+        self.assertEqual(result.ping[0][0][1], y1 - 10 / 100 * (y1 - y0))
+        self.assertEqual(result.ping_worst, [])
+
+    def test_missing_second_ip_has_no_line(self):
+        result = chart([P(NOW - 10, 1, 1, 0, 10)])
+        self.assertEqual((len(result.ping), result.ping2), (1, []))
+
+    def test_old_worst_of_both_is_its_own_series_on_the_same_scale(self):
+        result = chart([P(NOW - 20, 1, 1, 0, None, None, 80), P(NOW - 10, 1, 1, 0, 40)])
+        _, y0, _, y1 = result.plot
+        self.assertEqual(result.ping_ticks[-1], (y0, 80))
+        self.assertEqual(result.ping_worst[0][0][1], y0)
+        self.assertEqual(len(result.ping), 1)
+
+    def test_filter_shows_only_the_chosen_ping(self):
+        points = [P(NOW - 10, 1, 1, 0, 10, 200, 300)]
+        only1 = chart(points, {'ping'})
+        self.assertEqual((len(only1.ping), only1.ping2, only1.ping_worst, only1.ping_ticks[-1][1]), (1, [], [], 10))
+        only2 = chart(points, {'ping2'})
+        self.assertEqual((only2.ping, len(only2.ping2), only2.ping_ticks[-1][1]), ([], 1, 200))
+        onlyw = chart(points, {'pingw'})
+        self.assertEqual((onlyw.ping, len(onlyw.ping_worst), onlyw.ping_ticks[-1][1]), ([], 1, 300))
+
+    def test_short_peak_of_the_second_ip_survives_reduction(self):
+        points = [P(NOW - FOUR + i * 5, 1, 1, 0, 10, 10) for i in range(2880)]
+        points[1000] = points[1000]._replace(ping2=900)
+        self.assertEqual(chart(points, span=FOUR).ping_ticks[-1][1], 900)
+
+
+class TwoPingSummaryTests(unittest.TestCase):
+    POINTS = [P(1, 1, 1, 0, 10, 100), P(2, 1, 1, 0, 30, 200)]
+    LABELS = {'ping': 'ping 8.8.8.8', 'ping2': 'ping 1.1.1.1', 'pingw': 'ping (pior dos dois)'}
+
+    def text(self, points=None, series=ALL_SERIES):
+        return summarize(self.POINTS if points is None else points, 1, 2, series,
+                         lambda v: f'{v}B', fmt_time=str, ping_labels=self.LABELS)
+
+    def test_each_ip_is_summarized_with_its_address(self):
+        text = self.text()
+        self.assertIn('ping 8.8.8.8 pico 30 ms, média 20 ms', text)
+        self.assertIn('ping 1.1.1.1 pico 200 ms, média 150 ms', text)
+        self.assertNotIn('pior dos dois', text)
+
+    def test_old_points_are_summarized_as_worst_of_both(self):
+        text = self.text([P(1, 1, 1, 0, None, None, 70)])
+        self.assertIn('ping (pior dos dois) pico 70 ms, média 70 ms', text)
+        self.assertNotIn('1.1.1.1', text)
+
+    def test_filter_limits_the_pings_shown(self):
+        text = self.text(series={'ping2'})
+        self.assertIn('ping 1.1.1.1 pico 200 ms', text)
+        self.assertNotIn('8.8.8.8', text)
+
 
 class TimeAxisTests(unittest.TestCase):
     def ticks(self, span, now=36000, fmt_time=str):

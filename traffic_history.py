@@ -16,26 +16,49 @@ KEEP_S = 4 * 3600
 MAX_POINTS = KEEP_S // BUCKET_S
 FUTURE_TOLERANCE_S = 60
 
-Point = namedtuple('Point', 'epoch v4_down v4_up v6_down v6_up v4_mark v6_mark v4_ping v6_ping',
-                   defaults=(None, None))
-FamilyPoint = namedtuple('FamilyPoint', 'epoch down up mark ping', defaults=(None,))
+# CSV, 11 columns: epoch, 4 speeds, 2 marks, v4 ping of IP 1 and 2, v6 ping of IP 1 and 2.
+# Lines of the 9-column format kept one ping per family (the worst of both IPs): it is
+# stored in the IP 1 column with LEGACY_WORST (-1) in the IP 2 column, so it survives rewrites.
+LEGACY_WORST = -1
+Point = namedtuple('Point', 'epoch v4_down v4_up v6_down v6_up v4_mark v6_mark '
+                            'v4_ping v4_ping2 v6_ping v6_ping2',
+                   defaults=(None, None, None, None))
+FamilyPoint = namedtuple('FamilyPoint', 'epoch down up mark ping ping2 worst', defaults=(None, None, None))
 
 
 def _parse_line(line):
     fields = line.strip().split(',')
-    if len(fields) not in (7, 9):  # 7: first 1.1.0 build, without ping.
+    if len(fields) not in (7, 9, 11):  # 7: no ping; 9: one ping per family; 11: one per IP.
         return None
     try:
         epoch = int(fields[0])
         speeds = [int(value) if value else None for value in fields[1:5]]
         marks = [int(fields[5]), int(fields[6])]
-        pings = [int(value) if value else None for value in fields[7:9]]
+        pings = [int(value) if value else None for value in fields[7:]]
     except ValueError:
         return None
-    if (any(value is not None and value < 0 for value in speeds + pings)
+    if len(pings) == 2:  # Worst of both IPs: marked for the screen to say so.
+        pings = [pings[0], LEGACY_WORST if pings[0] is not None else None,
+                 pings[1], LEGACY_WORST if pings[1] is not None else None]
+    elif len(pings) == 0:
+        pings = [None] * 4
+    if (any(value is not None and value < 0 for value in speeds)
+            or any(value is not None and value < 0 for value in pings[0::2])
+            or any(value is not None and value < 0 and (value != LEGACY_WORST or pings[i - 1] is None)
+                   for i, value in ((1, pings[1]), (3, pings[3])))
             or any(m not in (0, 1, 2) for m in marks)):
         return None
     return Point(epoch, *speeds, *marks, *pings)
+
+
+def _empty_rtts():
+    return {'ipv4': [None, None], 'ipv6': [None, None]}
+
+
+def _family_point(epoch, down, up, mark, ping, ping2):
+    if ping2 == LEGACY_WORST:
+        return FamilyPoint(epoch, down, up, mark, None, None, ping)
+    return FamilyPoint(epoch, down, up, mark, ping, ping2)
 
 
 def _format_line(point):
@@ -53,14 +76,15 @@ class TrafficHistory:
         self._bucket = None
         self._samples = []
         self._marks = {'ipv4': 0, 'ipv6': 0}
-        self._rtts = {'ipv4': None, 'ipv6': None}
+        self._rtts = _empty_rtts()
         # Always rewrite first: a line cut by a power loss would otherwise
         # glue itself to the next append and damage both lines.
         self._needs_rewrite = True
         self._error_logged = False
 
     def add_sample(self, rates, marks, rtts=None):
-        """rates: ((up_v4, up_v6), (down_v4, down_v6)) or None; marks and rtts: per family."""
+        """rates: ((up_v4, up_v6), (down_v4, down_v6)) or None; marks: per family;
+        rtts: per family, [ip1, ip2]."""
         epoch = int(self.clock()) // BUCKET_S * BUCKET_S
         with self._lock:
             if self._bucket is not None and epoch != self._bucket:
@@ -70,10 +94,11 @@ class TrafficHistory:
                 self._samples.append(rates)
             for family, mark in marks.items():
                 self._marks[family] = max(self._marks[family], mark)
-            for family, rtt in (rtts or {}).items():
-                if rtt is not None:
-                    current = self._rtts[family]
-                    self._rtts[family] = rtt if current is None else max(current, rtt)
+            for family, values in (rtts or {}).items():
+                for position, rtt in enumerate(values[:2]):
+                    if rtt is not None:
+                        current = self._rtts[family][position]
+                        self._rtts[family][position] = rtt if current is None else max(current, rtt)
 
     def finish_bucket(self):
         with self._lock:
@@ -86,17 +111,16 @@ class TrafficHistory:
                 return None
             return round(sum(sample[direction][family] for sample in self._samples) / len(self._samples))
         def worst(family):
-            value = self._rtts[family]
-            return None if value is None else round(value)
+            return [None if value is None else round(value) for value in self._rtts[family]]
         point = Point(self._bucket, average(1, 0), average(0, 0), average(1, 1), average(0, 1),
-                      self._marks['ipv4'], self._marks['ipv6'], worst('ipv4'), worst('ipv6'))
+                      self._marks['ipv4'], self._marks['ipv6'], *worst('ipv4'), *worst('ipv6'))
         self._points.append(point)
         self._pending.append(point)
         del self._pending[:-MAX_POINTS]
         self._bucket = None
         self._samples = []
         self._marks = {'ipv4': 0, 'ipv6': 0}
-        self._rtts = {'ipv4': None, 'ipv6': None}
+        self._rtts = _empty_rtts()
 
     def points(self, family, period_s):
         now = self.clock()
@@ -107,8 +131,10 @@ class TrafficHistory:
             visible = [p for p in self._points if start <= p.epoch <= end]
         visible.sort(key=lambda p: p.epoch)
         if family == 'ipv4':
-            return [FamilyPoint(p.epoch, p.v4_down, p.v4_up, p.v4_mark, p.v4_ping) for p in visible]
-        return [FamilyPoint(p.epoch, p.v6_down, p.v6_up, p.v6_mark, p.v6_ping) for p in visible]
+            return [_family_point(p.epoch, p.v4_down, p.v4_up, p.v4_mark, p.v4_ping, p.v4_ping2)
+                    for p in visible]
+        return [_family_point(p.epoch, p.v6_down, p.v6_up, p.v6_mark, p.v6_ping, p.v6_ping2)
+                for p in visible]
 
     def load(self):
         lines = []
@@ -240,11 +266,14 @@ class TrafficRecorder(threading.Thread):
 GAP_S = 15
 MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 12, 56, 26
 TICK_STEPS = (15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200)
-ALL_SERIES = frozenset({'down', 'up', 'ping', 'loss'})
+# 'ping' is the IP 1 line, 'ping2' the IP 2 line, 'pingw' the old worst-of-both line.
+ALL_SERIES = frozenset({'down', 'up', 'ping', 'ping2', 'pingw', 'loss'})
+PING_SERIES = (('ping', 'ping'), ('ping2', 'ping2'), ('pingw', 'worst'))
 MIN_VIEW_S = 60
 ZOOM_STEP = 0.75
 
-Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks ping ping_ticks')
+Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks ping ping_ticks ping2 ping_worst',
+                   defaults=([], []))
 
 
 def local_hhmm(epoch):
@@ -280,10 +309,10 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
         group = groups.get(x)
         if group is None:
             groups[x] = dict(first=point.epoch, last=point.epoch, down=point.down, up=point.up,
-                             ping=point.ping, mark=point.mark)
+                             ping=point.ping, ping2=point.ping2, worst=point.worst, mark=point.mark)
         else:
             group['last'] = point.epoch
-            for name in ('down', 'up', 'ping'):
+            for name in ('down', 'up', 'ping', 'ping2', 'worst'):
                 group[name] = _larger(group[name], getattr(point, name))
             group['mark'] = max(group['mark'], point.mark)
     ordered = [(x, groups[x]) for x in sorted(groups)]
@@ -318,8 +347,10 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
     else:
         y_ticks = [(y1, 0), ((y0 + y1) / 2, speed_top / 2), (y0, speed_top)]
 
-    ping_peak = peak_of('ping') if 'ping' in series else None
-    ping = segments('ping', ping_peak or 1) if 'ping' in series else []
+    ping_fields = [field for name, field in PING_SERIES if name in series]
+    ping_peak = peak_of(*ping_fields) if ping_fields else None
+    ping_lines = {name: segments(field, ping_peak or 1) if name in series else []
+                  for name, field in PING_SERIES}
     if ping_peak is None:
         ping_ticks = []
     elif not ping_peak:
@@ -340,7 +371,8 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
     while tick <= end:
         x_ticks.append((x0 + (tick - start) / span_s * pixels, formatter(tick)))
         tick += step
-    return Chart((x0, y0, x1, y1), down, up, bands, x_ticks, y_ticks, ping, ping_ticks)
+    return Chart((x0, y0, x1, y1), down, up, bands, x_ticks, y_ticks, ping_lines['ping'], ping_ticks,
+                 ping_lines['ping2'], ping_lines['pingw'])
 
 
 def _slide(start, span, now):
@@ -371,16 +403,23 @@ def x_to_time(x, plot, start, end):
     return start + (min(x1, max(x0, x)) - x0) / (x1 - x0) * (end - start)
 
 
-def summarize(points, start, end, series, fmt_speed, fmt_time=local_hhmm):
+PING_LABELS = {'ping': 'ping', 'ping2': 'ping 2', 'pingw': 'ping (pior dos dois)'}
+
+
+def summarize(points, start, end, series, fmt_speed, fmt_time=local_hhmm, ping_labels=None):
+    labels = dict(PING_LABELS, **(ping_labels or {}))
     parts = [f'{fmt_time(start)} – {fmt_time(end)}']
-    for name, label, fmt in (('down', '↓', fmt_speed), ('up', '↑', fmt_speed),
-                             ('ping', 'ping', lambda value: f'{round(value)} ms')):
+    fmt_ms = lambda value: f'{round(value)} ms'
+    for name, field, label, fmt in (('down', 'down', '↓', fmt_speed), ('up', 'up', '↑', fmt_speed),
+                                    ('ping', 'ping', labels['ping'], fmt_ms),
+                                    ('ping2', 'ping2', labels['ping2'], fmt_ms),
+                                    ('pingw', 'worst', labels['pingw'], fmt_ms)):
         if name not in series:
             continue
-        values = [getattr(point, name) for point in points if getattr(point, name) is not None]
+        values = [getattr(point, field) for point in points if getattr(point, field) is not None]
         if values:
             parts.append(f'{label} pico {fmt(max(values))}, média {fmt(sum(values) / len(values))}')
-        else:
+        elif name not in ('ping2', 'pingw'):  # The extra pings only appear when they exist.
             parts.append(f'{label} sem dados')
     if 'loss' in series:
         failures = sum(point.mark > 0 for point in points)

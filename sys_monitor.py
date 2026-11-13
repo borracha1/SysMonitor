@@ -1657,7 +1657,8 @@ def main():
 
     global TRAFFIC_HISTORY_UI
     TRAFFIC_HISTORY_UI = TrafficHistoryWindow(app_root, traffic_history, fmt_speed,
-                                              cfg["window"]["accent_up"], cfg["window"]["accent_down"])
+                                              cfg["window"]["accent_up"], cfg["window"]["accent_down"],
+                                              ping_targets=lambda: dict(ping.groups) if ping else {})
 
     space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
     if space_monitor is not None:

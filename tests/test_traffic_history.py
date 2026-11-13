@@ -118,7 +118,7 @@ class StorageTests(unittest.TestCase):
         history = self.history()
         history.load()
         self.assertEqual([p.epoch for p in history.points('ipv4', th.KEEP_S)], [now - 60])
-        self.assertEqual(self.path.read_text(encoding='ascii'), good.replace('\n', ',,\n'))
+        self.assertEqual(self.path.read_text(encoding='ascii'), good.replace('\n', ',,,,\n'))
 
     def test_cut_line_from_power_loss_does_not_damage_the_next_write(self):
         now = int(self.clock.now)

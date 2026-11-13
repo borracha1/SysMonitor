@@ -299,5 +299,66 @@ class FilterTests(WindowCase):
         self.assertFalse([text for text in texts if text and text.endswith(' ms')])
 
 
+class TwoPingWindowTests(WindowCase):
+    GROUPS = {'ipv4': ('8.8.8.8', '1.1.1.1'), 'ipv6': ('2001:db8::1',)}
+
+    def setUp(self):
+        super().setUp()
+        self.window.ping_targets = lambda: self.GROUPS
+        self.window.redraw()
+
+    def legend_text(self, name):
+        return self.window._legend[name][0].config.call_args.kwargs['text']
+
+    def test_legend_names_the_current_ip_of_each_position(self):
+        self.assertEqual(self.legend_text('ping'), 'ping 8.8.8.8')
+        self.assertEqual(self.legend_text('ping2'), 'ping 1.1.1.1')
+
+    def test_position_without_ip_is_not_shown_and_follows_the_family(self):
+        self.window._select_family('ipv6')
+        self.assertEqual(self.legend_text('ping'), 'ping 2001:db8::1')
+        self.assertEqual(self.legend_text('ping2'), '')
+        self.window._select_family('ipv4')
+        self.assertEqual(self.legend_text('ping2'), 'ping 1.1.1.1')
+
+    def test_old_data_without_a_configured_ip_still_gets_a_label(self):
+        self.window._select_family('ipv6')
+        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 5, 6)]
+        self.window.redraw()
+        self.assertEqual(self.legend_text('ping2'), 'ping 2')
+
+    def test_worst_of_both_legend_only_when_old_points_are_in_view(self):
+        self.assertEqual(self.legend_text('pingw'), '')
+        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, None, None, 9)]
+        self.window.redraw()
+        self.assertEqual(self.legend_text('pingw'), 'ping (pior dos dois)')
+
+    def test_two_lines_with_their_own_colors(self):
+        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 30, 60)]
+        self.canvas.create_line.reset_mock()
+        self.window.redraw()
+        colors = [call.kwargs.get('fill') for call in self.canvas.create_line.call_args_list]
+        self.assertIn(ui.PING_COLOR, colors)
+        self.assertIn(ui.PING2_COLOR, colors)
+        self.assertNotEqual(ui.PING_COLOR, ui.PING2_COLOR)
+        texts = [call.kwargs.get('text') for call in self.canvas.create_text.call_args_list]
+        self.assertIn('60 ms', texts)
+
+    def test_each_ping_legend_filters_its_own_line(self):
+        for name in ('ping', 'ping2', 'pingw'):
+            with self.subTest(name=name):
+                self.window.series_filter = None
+                for label in self.window._legend[name]:
+                    label.bind.call_args.args[1](None)
+                self.assertEqual(self.window.series_filter, name)
+
+    def test_summary_names_each_ip(self):
+        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 30, 60)]
+        self.window._zoom(th.ZOOM_STEP)
+        text = self.window._summary.config.call_args.kwargs['text']
+        self.assertIn('ping 8.8.8.8 pico 30 ms', text)
+        self.assertIn('ping 1.1.1.1 pico 60 ms', text)
+
+
 if __name__ == '__main__':
     unittest.main()

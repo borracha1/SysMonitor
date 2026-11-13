@@ -19,6 +19,8 @@ NORMAL_FG = 'SystemButtonText'
 LEGEND_ACTIVE_BG = '#3a3f46'
 GRID = '#33373d'
 PING_COLOR = '#c9a0ff'
+PING2_COLOR = '#ffb454'
+PING_WORST_COLOR = '#8fd6c4'
 SELECTION_OUTLINE = '#7fb3e6'
 MARK_COLORS = {1: '#6b2a2a', 2: '#d83a3a'}
 WIDTH, HEIGHT = 800, 400
@@ -60,13 +62,15 @@ def centered_geometry(work, width, height):
 
 
 class TrafficHistoryWindow:
-    def __init__(self, master, history, fmt_speed, accent_up, accent_down, work_area=None):
+    def __init__(self, master, history, fmt_speed, accent_up, accent_down, work_area=None,
+                 ping_targets=None):
         self.master = master
         self.history = history
         self.fmt_speed = fmt_speed
         self.accent_up = accent_up
         self.accent_down = accent_down
         self.work_area = work_area or pointer_work_area
+        self.ping_targets = ping_targets or (lambda: {})  # family -> (ip1, ip2) now configured
         self.family = 'ipv4'
         self.period_s = 3600
         self.series_filter = None
@@ -165,6 +169,8 @@ class TrafficHistoryWindow:
         for name, items in (('down', (('↓ download', self.accent_down),)),
                             ('up', (('↑ upload', self.accent_up),)),
                             ('ping', (('ping', PING_COLOR),)),
+                            ('ping2', (('ping 2', PING2_COLOR),)),
+                            ('pingw', (('ping (pior dos dois)', PING_WORST_COLOR),)),
                             ('loss', (('perda:', FG), ('▌', MARK_COLORS[1]), ('um IP sem resposta', FG),
                                       ('▌', MARK_COLORS[2]), ('todos sem resposta', FG)))):
             labels = []
@@ -270,13 +276,37 @@ class TrafficHistoryWindow:
         self.canvas.delete(drag['item'])
         self.redraw()
 
-    def _update_summary(self, points, start, end, series):
+    def _ping_labels(self, points):
+        """Legend/summary text of each ping series; '' hides one that has no IP nor data."""
+        try:
+            targets = tuple(self.ping_targets().get(self.family, ()))
+        except Exception:  # The legend must never stop the chart.
+            targets = ()
+        labels = {}
+        for position, (name, field) in enumerate((('ping', 'ping'), ('ping2', 'ping2'))):
+            ip = targets[position] if position < len(targets) else ''
+            if ip:
+                labels[name] = f'ping {ip}'
+            elif any(getattr(point, field) is not None for point in points):
+                labels[name] = 'ping' if position == 0 else 'ping 2'
+            else:
+                labels[name] = ''
+        has_worst = any(point.worst is not None for point in points)
+        labels['pingw'] = 'ping (pior dos dois)' if has_worst else ''
+        return labels
+
+    def _update_legend_text(self, labels):
+        for name, text in labels.items():
+            for label in self._legend.get(name, ()):
+                label.config(text=text, bg=LEGEND_ACTIVE_BG if name == self.series_filter else BG)
+
+    def _update_summary(self, points, start, end, series, labels=None):
         if self.view is None:
             if self._summary_shown:
                 self._summary.pack_forget()
                 self._summary_shown = False
             return
-        self._summary.config(text=summarize(points, start, end, series, self.fmt_speed),
+        self._summary.config(text=summarize(points, start, end, series, self.fmt_speed, ping_labels=labels),
                              wraplength=max(200, self.canvas.winfo_width() - 16))
         if not self._summary_shown:
             self._summary.pack(fill='x', padx=8, pady=(0, 2), before=self.canvas)
@@ -290,7 +320,9 @@ class TrafficHistoryWindow:
         start, end = self._current_range()
         series = self._visible_series()
         points = self.history.points_between(self.family, start, end)
-        self._update_summary(points, start, end, series)
+        labels = self._ping_labels(points)
+        self._update_legend_text(labels)
+        self._update_summary(points, start, end, series, {name: text for name, text in labels.items() if text})
         chart = self._chart = build_chart(points, canvas.winfo_width(), canvas.winfo_height(),
                                           end, end - start, series)
         if chart is None:
@@ -307,6 +339,7 @@ class TrafficHistoryWindow:
             canvas.create_line(x, y1, x, y1 + 4, fill=FG)
             canvas.create_text(x, y1 + 6, text=text, fill=FG, anchor='n')
         for segments, color in ((chart.up, self.accent_up), (chart.down, self.accent_down),
+                                (chart.ping_worst, PING_WORST_COLOR), (chart.ping2, PING2_COLOR),
                                 (chart.ping, PING_COLOR)):
             for segment in segments:
                 coordinates = [value for point in segment for value in point]
