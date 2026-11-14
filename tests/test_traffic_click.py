@@ -39,12 +39,17 @@ class WindowClickTests(unittest.TestCase):
         helper = views.GroupViewTests()
         ns = helper.namespace()
         window = helper.window(ns)
-        ui = Mock()
-        rects = {1: rect(500, 0, 700, 20), 2: rect(500, 20, 700, 40)}
-        ns.update(TRAFFIC_HISTORY_UI=ui, net_family_at=net_family_at, is_click=is_click,
+        ui, latency = Mock(), Mock()
+        rects = {1: rect(500, 0, 700, 20), 2: rect(500, 20, 700, 40),
+                 3: rect(800, 0, 830, 40), 4: rect(830, 0, 900, 20), 5: rect(830, 20, 900, 40)}
+        ns.update(TRAFFIC_HISTORY_UI=ui, LATENCY_HISTORY_UI=latency, net_family_at=net_family_at, is_click=is_click,
                   _cursor_pos=Mock(return_value=cursor), _win_rect=lambda hwnd: rects.get(hwnd))
         window.lbl_up = Mock(winfo_id=Mock(return_value=1))
         window.lbl_down = Mock(winfo_id=Mock(return_value=2))
+        window.ping_marker_label = Mock(winfo_id=Mock(return_value=3))
+        window.ping_labels = [Mock(winfo_id=Mock(return_value=4)), Mock(winfo_id=Mock(return_value=5))]
+        window._ping_layout_family = 'ipv6'
+        window.latency_ui = latency
         window._closing = False
         window._net_active = active
         window._net_font = Mock(measure=Mock(side_effect=lambda text: {
@@ -108,15 +113,97 @@ class WindowClickTests(unittest.TestCase):
         window._bind_traffic_click()
         window.root.bind.assert_not_called()
 
-    def test_menu_item_comes_before_limits_and_opens_last_family(self):
-        ns, window, ui = self.window((510, 10))
+    def menu_calls(self, window, ns):
         window._bind_menu()
         calls = [c for c in ns['tk'].Menu.return_value.method_calls if c[0] == 'add_command']
-        labels = [c.kwargs['label'] for c in calls]
+        return calls, [c.kwargs['label'] for c in calls]
+
+    def test_menu_has_both_windows_in_sequence_before_limits(self):
+        ns, window, ui = self.window((510, 10))
+        calls, labels = self.menu_calls(window, ns)
         index = labels.index('Histórico de tráfego…')
-        self.assertEqual(labels[index + 1], 'Configurar limites de uso…')
+        self.assertEqual(labels[index + 1:index + 3], ['Latência e perda…', 'Configurar limites de uso…'])
         calls[index].kwargs['command']()
         ui.show.assert_called_once_with(None)
+        calls[index + 1].kwargs['command']()
+        window.latency_ui.show.assert_called_once_with('ipv6')  # The family on the ping column now.
+
+    def test_menu_without_ping_has_only_traffic(self):
+        ns, window, _ = self.window((510, 10))
+        window.ping_enabled = False
+        _, labels = self.menu_calls(window, ns)
+        self.assertIn('Histórico de tráfego…', labels)
+        self.assertNotIn('Latência e perda…', labels)
+
+    def test_menu_without_ping_monitor_has_only_traffic(self):
+        ns, window, _ = self.window((510, 10))
+        window.ping_monitor = None
+        _, labels = self.menu_calls(window, ns)
+        self.assertNotIn('Latência e perda…', labels)
+
+
+class PingColumnClickTests(unittest.TestCase):
+    window = WindowClickTests.window
+
+    def test_ping_column_opens_latency_on_the_family_shown_there(self):
+        for cursor in ((810, 10), (850, 10), (850, 30), (899, 39), (800, 0)):
+            with self.subTest(cursor=cursor):
+                _, window, ui = self.window(cursor)
+                window._on_net_click()
+                window.latency_ui.show.assert_called_once_with('ipv6')
+                ui.show.assert_not_called()
+
+    def test_family_follows_the_column_not_the_traffic_split(self):
+        _, window, _ = self.window((850, 10))
+        window._ping_layout_family = 'ipv4'
+        window._on_net_click()
+        window.latency_ui.show.assert_called_once_with('ipv4')
+
+    def test_traffic_cells_never_open_latency(self):
+        _, window, ui = self.window((510, 10))
+        window._on_net_click()
+        ui.show.assert_called_once_with('ipv4')
+        window.latency_ui.show.assert_not_called()
+
+    def test_outside_both_columns_opens_nothing(self):
+        for cursor in ((750, 10), (900, 10), (850, 40), (850, -1), (799, 20)):
+            with self.subTest(cursor=cursor):
+                _, window, ui = self.window(cursor)
+                window._on_net_click()
+                ui.show.assert_not_called()
+                window.latency_ui.show.assert_not_called()
+
+    def test_ping_disabled_has_no_column_to_click(self):
+        _, window, ui = self.window((850, 10))
+        window.ping_enabled = False
+        window._on_net_click()
+        window.latency_ui.show.assert_not_called()
+        ui.show.assert_not_called()
+
+    def test_refused_handles_or_closing_widget_do_nothing(self):
+        ns, window, _ = self.window((850, 10))
+        ns['_win_rect'] = lambda hwnd: None
+        window._on_net_click()
+        window.latency_ui.show.assert_not_called()
+        ns, window, _ = self.window((850, 10))
+        window._closing = True
+        window._on_net_click()
+        window.latency_ui.show.assert_not_called()
+
+    def test_program_without_latency_window_ignores_the_click(self):
+        ns, window, _ = self.window((850, 10))
+        ns['LATENCY_HISTORY_UI'] = None
+        window._on_net_click()
+
+    def test_main_creates_and_closes_both_history_windows(self):
+        source = Path('sys_monitor.py').read_text(encoding='utf-8')
+        for name in ('TRAFFIC_HISTORY_UI', 'LATENCY_HISTORY_UI'):
+            self.assertIn(name + ' = ', source)
+            self.assertIn(name + '.close()', source)
+
+    def test_floating_release_without_moving_routes_the_same_way(self):
+        source = Path('sys_monitor.py').read_text(encoding='utf-8')
+        self.assertIn('self._on_net_click()', source[source.index('def release(e)'):source.index('self.root.bind("<ButtonPress-1>"')])
 
 
 if __name__ == '__main__':

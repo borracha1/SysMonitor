@@ -110,7 +110,61 @@ class WindowTests(unittest.TestCase):
 
     def test_title_says_the_values_are_estimated(self):
         self.window.show('ipv4')
-        self.top.title.assert_called_once_with('SysMonitor · Histórico de tráfego (estimado)')
+        self.top.title.assert_called_once_with('SysMonitor · Tráfego (estimado)')
+
+
+class TwoWindowsTests(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.object(ui, 'tk')
+        self.tk = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tk.TclError = RuntimeError
+        self.tk.Button.side_effect = lambda *args, **kwargs: Mock()
+        self.tk.Toplevel.side_effect = lambda *args, **kwargs: Mock(**{'winfo_exists.return_value': True})
+        self.tk.Canvas.return_value.winfo_width.return_value = 800
+        self.tk.Canvas.return_value.winfo_height.return_value = 360
+        self.history = Mock()
+        self.history.clock.return_value = 1_000_000
+        self.history.points_between.return_value = []
+        args = (Mock(), self.history, lambda v: f'{v}B', '#111', '#222')
+        self.traffic = ui.TrafficHistoryWindow(*args, work_area=lambda: (0, 0, 1920, 1040))
+        self.latency = ui.LatencyHistoryWindow(*args, work_area=lambda: (0, 0, 1920, 1040))
+
+    def test_each_kind_has_its_title(self):
+        self.traffic.show('ipv4')
+        self.latency.show('ipv4')
+        self.assertEqual(self.traffic.window.title.call_args.args, ('SysMonitor · Tráfego (estimado)',))
+        self.assertEqual(self.latency.window.title.call_args.args, ('SysMonitor · Latência e perda',))
+
+    def test_windows_are_independent_and_both_children_of_the_root(self):
+        self.traffic.show('ipv4')
+        self.latency.show('ipv6')
+        self.assertIsNot(self.traffic.window, self.latency.window)
+        self.assertEqual((self.traffic.family, self.latency.family), ('ipv4', 'ipv6'))
+        self.assertEqual([call.args[0] for call in self.tk.Toplevel.call_args_list], [self.traffic.master, self.latency.master])
+
+    def test_closing_one_leaves_the_other_open_with_its_state(self):
+        self.traffic.show('ipv4')
+        self.latency.show('ipv4')
+        self.latency._select_period(900)
+        self.traffic.close()
+        self.assertIsNone(self.traffic.window)
+        self.assertIsNotNone(self.latency.window)
+        self.latency.window.destroy.assert_not_called()
+        self.assertEqual(self.latency.period_s, 900)
+        self.assertEqual(self.traffic.period_s, 3600)
+
+    def test_second_window_does_not_cover_the_first_exactly(self):
+        self.traffic.show('ipv4')
+        self.latency.show('ipv4')
+        self.assertNotEqual(self.traffic.window.geometry.call_args.args, self.latency.window.geometry.call_args.args)
+
+    def test_second_click_on_the_open_window_brings_it_to_front_and_switches_family(self):
+        self.latency.show('ipv4')
+        self.latency.show('ipv6')
+        self.assertEqual(self.tk.Toplevel.call_count, 1)
+        self.latency.window.lift.assert_called()
+        self.assertEqual(self.history.points_between.call_args.args[0], 'ipv6')
 
 
 class GeometryTests(unittest.TestCase):

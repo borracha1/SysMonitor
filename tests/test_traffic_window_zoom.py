@@ -229,8 +229,8 @@ class SummaryLineTests(WindowCase):
         self.window._summary.pack.assert_called_once()
         text = self.window._summary.config.call_args.kwargs['text']
         self.assertIn('↓ pico 100B', text)
-        self.assertIn('ping pico 30 ms', text)
-        self.assertIn('1 intervalo com falha', text)
+        self.assertNotIn('ping', text)
+        self.assertNotIn('falha', text)
         self.window._select_period(300)
         self.window._summary.pack_forget.assert_called_once()
 
@@ -255,16 +255,20 @@ class FilterTests(WindowCase):
         return spy.call_args.args[5]
 
     def test_click_shows_only_that_item_another_swaps_and_again_shows_all(self):
-        self.assertEqual(self.series(), th.ALL_SERIES)
+        self.assertEqual(self.series(), th.KIND_SERIES['traffic'])
         self.window._select_series('down')
         self.assertEqual(self.series(), {'down'})
-        self.window._select_series('ping')
-        self.assertEqual(self.series(), {'ping'})
-        self.window._select_series('ping')
-        self.assertEqual(self.series(), th.ALL_SERIES)
+        self.window._select_series('up')
+        self.assertEqual(self.series(), {'up'})
+        self.window._select_series('up')
+        self.assertEqual(self.series(), th.KIND_SERIES['traffic'])
+
+    def test_legend_has_only_download_and_upload(self):
+        self.assertEqual(set(self.window._legend), {'down', 'up'})
+        self.assertEqual(set(self.window._legend_frames), {'traffic'})
 
     def test_every_label_of_an_item_is_clickable(self):
-        for name in ('down', 'up', 'ping', 'loss'):
+        for name in ('down', 'up'):
             for label in self.window._legend[name]:
                 with self.subTest(name=name):
                     self.window.series_filter = None
@@ -274,8 +278,8 @@ class FilterTests(WindowCase):
                     self.assertEqual(self.window.series_filter, name)
 
     def test_active_item_is_highlighted(self):
-        self.window._select_series('ping')
-        self.assertEqual(self.window._legend['ping'][0].config.call_args.kwargs['bg'], ui.LEGEND_ACTIVE_BG)
+        self.window._select_series('up')
+        self.assertEqual(self.window._legend['up'][0].config.call_args.kwargs['bg'], ui.LEGEND_ACTIVE_BG)
         self.assertEqual(self.window._legend['down'][0].config.call_args.kwargs['bg'], ui.BG)
 
     def test_filter_survives_closing_the_window(self):
@@ -284,172 +288,64 @@ class FilterTests(WindowCase):
         self.window.show()
         self.assertEqual(self.series(), {'up'})
 
-    def test_ping_draws_its_line_and_axis_in_ms(self):
-        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0, 30)]
-        self.window.redraw()
-        texts = [call.kwargs.get('text') for call in self.canvas.create_text.call_args_list]
-        self.assertIn('30 ms', texts)
-        colors = [call.kwargs.get('fill') for call in self.canvas.create_line.call_args_list]
-        self.assertIn(ui.PING_COLOR, colors)
-
-    def test_only_ping_on_old_data_is_empty_without_failing(self):
-        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0)]
+    def test_old_ping_data_never_reaches_the_traffic_chart(self):
+        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 2, 30, 60, 9)]
         self.canvas.create_text.reset_mock()
-        self.window._select_series('ping')
+        self.canvas.create_line.reset_mock()
+        self.canvas.create_rectangle.reset_mock()
+        self.window.redraw()
         texts = [call.kwargs.get('text') for call in self.canvas.create_text.call_args_list]
         self.assertFalse([text for text in texts if text and text.endswith(' ms')])
+        self.assertNotIn('sem dados de ping', texts)
+        colors = {call.kwargs.get('fill') for call in self.canvas.create_line.call_args_list}
+        self.assertFalse(colors & {ui.PING_COLOR, ui.PING2_COLOR, ui.PING_WORST_COLOR})
+        self.canvas.create_rectangle.assert_not_called()  # No loss bands in the traffic window.
 
 
-class TwoPingWindowTests(WindowCase):
-    GROUPS = {'ipv4': ('8.8.8.8', '1.1.1.1'), 'ipv6': ('2001:db8::1',)}
-
-    def setUp(self):
-        super().setUp()
-        self.window.ping_targets = lambda: self.GROUPS
-        self.window.redraw()
-
-    def legend_text(self, name):
-        return self.window._legend[name][0].config.call_args.kwargs['text']
-
-    def test_legend_names_the_current_ip_of_each_position(self):
-        self.assertEqual(self.legend_text('ping'), '8.8.8.8')
-        self.assertEqual(self.legend_text('ping2'), '1.1.1.1')
-
-    def test_position_without_ip_is_not_shown_and_follows_the_family(self):
-        self.window._select_family('ipv6')
-        self.assertEqual(self.legend_text('ping'), '2001:db8::1')
-        self.assertEqual(self.legend_text('ping2'), '')
-        self.window._select_family('ipv4')
-        self.assertEqual(self.legend_text('ping2'), '1.1.1.1')
-
-    def test_old_data_without_a_configured_ip_still_gets_a_label(self):
-        self.window._select_family('ipv6')
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 5, 6)]
-        self.window.redraw()
-        self.assertEqual(self.legend_text('ping2'), 'ping 2')
-
-    def test_worst_of_both_legend_only_when_old_points_are_in_view(self):
-        self.assertEqual(self.legend_text('pingw'), '')
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, None, None, 9)]
-        self.window.redraw()
-        self.assertEqual(self.legend_text('pingw'), 'pior dos dois')
-
-    def test_two_lines_with_their_own_colors(self):
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 30, 60)]
-        self.canvas.create_line.reset_mock()
-        self.window.redraw()
-        colors = [call.kwargs.get('fill') for call in self.canvas.create_line.call_args_list]
-        self.assertIn(ui.PING_COLOR, colors)
-        self.assertIn(ui.PING2_COLOR, colors)
-        self.assertNotEqual(ui.PING_COLOR, ui.PING2_COLOR)
-        texts = [call.kwargs.get('text') for call in self.canvas.create_text.call_args_list]
-        self.assertIn('60 ms', texts)
-
-    def test_each_ping_legend_filters_its_own_line(self):
-        for name in ('ping', 'ping2', 'pingw'):
-            with self.subTest(name=name):
-                for label in self.window._legend[name]:
-                    self.window.series_filter = None
-                    label.bind.call_args.args[1](None)
-                    self.assertEqual(self.window.series_filter, name)
-                self.assertEqual(self.window.series_filter, name)
-
-    def test_summary_names_each_ip(self):
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, 30, 60)]
-        self.window._zoom(th.ZOOM_STEP)
-        text = self.window._summary.config.call_args.kwargs['text']
-        self.assertIn('ping 8.8.8.8 pico 30 ms', text)
-        self.assertIn('ping 1.1.1.1 pico 60 ms', text)
-
-
-class TwoPanelWindowTests(WindowCase):
+class SinglePanelWindowTests(WindowCase):
     def texts(self):
         return [call.kwargs.get('text') for call in self.canvas.create_text.call_args_list]
 
     def windows(self):
         return {call.kwargs['window']: call for call in self.canvas.create_window.call_args_list}
 
-    def test_each_panel_has_its_own_legend_placed_above_it(self):
+    def test_legend_is_placed_above_the_only_panel(self):
         self.window.redraw()
         chart = self.window._chart
-        frames = self.window._legend_frames
         placed = self.windows()
-        self.assertEqual(set(frames), {'traffic', 'latency', 'loss'})
-        self.assertEqual(placed[frames['traffic']].args[1], chart.traffic_plot[1] - 4)
-        self.assertEqual(placed[frames['latency']].args[1], chart.ping_plot[1] - 4)
-        self.assertGreater(placed[frames['loss']].args[1], chart.plot[3])
+        self.assertEqual(placed[self.window._legend_frames['traffic']].args[1], chart.plot[1] - 4)
 
-    def test_titles_and_colour_samples(self):
+    def test_title_and_colour_samples(self):
         labels = [call.kwargs for call in self.tk.Label.call_args_list]
         self.assertIn('Tráfego', [kwargs.get('text') for kwargs in labels])
-        self.assertIn('Latência', [kwargs.get('text') for kwargs in labels])
-        self.assertEqual((ui.PING_COLOR, ui.PING2_COLOR, ui.PING_WORST_COLOR), ('#c9a0ff', '#5fd7c0', '#9aa0a6'))
-        sample = {name: self.window._legend[name][1] for name in ('down', 'up', 'ping', 'ping2', 'pingw')}
-        colors = {kwargs.get('fg') for kwargs in labels}
-        self.assertTrue({ui.PING_COLOR, ui.PING2_COLOR, ui.PING_WORST_COLOR, '#111', '#222'} <= colors)
-        self.assertEqual(len(sample), 5)
+        self.assertNotIn('Latência', [kwargs.get('text') for kwargs in labels])
+        self.assertTrue({'#111', '#222'} <= {kwargs.get('fg') for kwargs in labels})
 
-    def test_ping_ticks_in_ms_are_drawn_at_the_left_of_the_lower_panel(self):
-        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0, 30, 60)]
-        self.canvas.create_text.reset_mock()
-        self.window.redraw()
-        x0 = self.window._chart.plot[0]
-        calls = [call for call in self.canvas.create_text.call_args_list if call.kwargs.get('text') == '60 ms']
-        self.assertEqual((len(calls), calls[0].args[0]), (1, x0 - 6))
-
-    def test_worst_of_both_is_dashed_gray(self):
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 0, None, None, 9),
-                                                    P(NOW - 95, 1, 1, 0, None, None, 9)]
-        self.window.redraw()
-        dashed = [call.kwargs for call in self.canvas.create_line.call_args_list if call.kwargs.get('dash')]
-        self.assertEqual([(kwargs['fill'], kwargs['dash']) for kwargs in dashed],
-                         [(ui.PING_WORST_COLOR, ui.PING_WORST_DASH)])
-
-    def test_loss_bands_are_drawn_in_both_panels(self):
-        self.history.points_between.return_value = [P(NOW - 100, 1, 1, 2, 5)]
-        self.canvas.create_rectangle.reset_mock()
-        self.window.redraw()
-        chart = self.window._chart
-        spans = {(call.args[1], call.args[3]) for call in self.canvas.create_rectangle.call_args_list}
-        self.assertEqual(spans, {(chart.traffic_plot[1], chart.traffic_plot[3]),
-                                 (chart.ping_plot[1], chart.ping_plot[3])})
-
-    def test_no_ping_at_all_says_so_discreetly(self):
+    def test_speed_scale_is_at_the_left_of_the_panel(self):
         self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0)]
         self.canvas.create_text.reset_mock()
         self.window.redraw()
-        self.assertIn('sem dados de ping', self.texts())
+        x0 = self.window._chart.plot[0]
+        calls = [call for call in self.canvas.create_text.call_args_list if call.kwargs.get('text') == '100B']
+        self.assertEqual((len(calls), calls[0].args[0]), (1, x0 - 6))
 
-    def test_ping_present_has_no_such_message(self):
-        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0, 30)]
-        self.canvas.create_text.reset_mock()
-        self.window.redraw()
-        self.assertNotIn('sem dados de ping', self.texts())
-
-    def test_filter_keeps_both_panels_and_marks_the_hidden_one(self):
-        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0, 30)]
+    def test_filter_hiding_one_speed_does_not_leave_a_message(self):
+        self.history.points_between.return_value = [P(NOW - 100, 100, 10, 0)]
         self.canvas.create_text.reset_mock()
         self.window._select_series('down')
-        self.assertEqual(self.texts().count('oculto pelo filtro'), 1)
-        self.canvas.create_text.reset_mock()
-        self.window._select_series('ping')
-        self.assertEqual(self.texts().count('oculto pelo filtro'), 1)
+        self.assertNotIn('oculto pelo filtro', self.texts())
 
-    def test_drag_in_either_panel_selects_time(self):
-        chart = self.window._chart
-        for panel in (chart.traffic_plot, chart.ping_plot):
-            with self.subTest(panel=panel):
-                self.window._drag = None
-                self.window._drag_start(event(x=176, y=(panel[1] + panel[3]) // 2))
-                self.assertIsNotNone(self.window._drag)
-                self.window._drag_end(event(x=576))
-                self.assertIsNotNone(self.window.view)
-                self.window.view = None
+    def test_drag_selects_time(self):
+        panel = self.window._chart.plot
+        self.window._drag_start(event(x=176, y=(panel[1] + panel[3]) // 2))
+        self.assertIsNotNone(self.window._drag)
+        self.window._drag_end(event(x=576))
+        self.assertIsNotNone(self.window.view)
 
-    def test_window_is_taller_by_default_with_a_coherent_minimum(self):
-        self.assertGreaterEqual(ui.HEIGHT, 480)
-        self.assertLessEqual(ui.MIN_HEIGHT, ui.HEIGHT)
+    def test_window_title_and_minimum_size(self):
+        self.top.title.assert_called_once_with('SysMonitor · Tráfego (estimado)')
         self.top.minsize.assert_called_with(ui.MIN_WIDTH, ui.MIN_HEIGHT)
+        self.assertLessEqual(ui.MIN_HEIGHT, ui.HEIGHT)
 
 
 if __name__ == '__main__':

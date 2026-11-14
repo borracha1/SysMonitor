@@ -47,7 +47,7 @@ from ping_monitor import (PingMonitor, ping_settings, parse_ping_groups, fmt_pin
 from ping_config import save_ping_settings, save_window_settings
 from net_split import PacketCounters, split_rates, net_column_width, net_family_at, is_click
 from traffic_history import TrafficHistory, TrafficRecorder
-from traffic_history_ui import TrafficHistoryWindow
+from traffic_history_ui import LatencyHistoryWindow, TrafficHistoryWindow
 from top_processes import TopProcessesMonitor
 from hover_tooltip import HoverTooltip
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
@@ -394,7 +394,8 @@ def _win_rect(hwnd):
     return r
 
 
-TRAFFIC_HISTORY_UI = None  # One process-wide window; set by main().
+TRAFFIC_HISTORY_UI = None  # One process-wide window per history kind; set by main().
+LATENCY_HISTORY_UI = None
 TOP_PROCESSES = None  # One process-wide sampler of the top 3 programs; set by main().
 
 
@@ -1187,6 +1188,8 @@ class MonitorWindow:
                 menu.add_radiobutton(label=title, value=side, variable=self._taskbar_side_var,
                                      command=lambda value=side: self._select_taskbar_side(value))
         menu.add_command(label="Histórico de tráfego…", command=self._open_traffic_history)
+        if self.ping_enabled and self.ping_monitor is not None:
+            menu.add_command(label="Latência e perda…", command=self._open_latency_history)
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_separator()
         menu.add_command(label="Fechar", command=self.quit)
@@ -1368,25 +1371,42 @@ class MonitorWindow:
         if hover is not None:
             hover.close()
 
+    @staticmethod
+    def _union_rect(labels):
+        """Screen rect (left, top, right, bottom) around the labels, or None if Windows refuses one."""
+        rects = [_win_rect(label.winfo_id()) for label in labels]
+        if not rects or None in rects:
+            return None
+        return (min(r.left for r in rects), min(r.top for r in rects),
+                max(r.right for r in rects), max(r.bottom for r in rects))
+
+    @staticmethod
+    def _inside(rect, x, y):
+        return rect is not None and rect[0] <= x < rect[2] and rect[1] <= y < rect[3]
+
     def _on_net_click(self):
+        """The one left-click handler: a traffic cell opens the traffic window on that family,
+        the ping column opens the latency window on the family shown there, elsewhere nothing."""
         if getattr(self, "_closing", False):
             return
         # Windows coordinates in every mode: Tk's are unreliable for a child
         # of another process's window (same reason as show_menu).
         x, y = _cursor_pos()
-        rects = [_win_rect(label.winfo_id()) for label in (self.lbl_up, self.lbl_down)]
-        if None in rects:
-            return
-        left = min(rect.left for rect in rects)
-        if not (left <= x < max(rect.right for rect in rects)
-                and min(rect.top for rect in rects) <= y < max(rect.bottom for rect in rects)):
-            return
-        family = net_family_at(x, left, self._net_cell_widths()) if self._net_active else None
-        self._open_traffic_history(family)
+        traffic = self._union_rect((self.lbl_up, self.lbl_down))
+        if self._inside(traffic, x, y):
+            family = net_family_at(x, traffic[0], self._net_cell_widths()) if self._net_active else None
+            self._open_traffic_history(family)
+        elif self.ping_enabled and self._inside(
+                self._union_rect((self.ping_marker_label, *self.ping_labels)), x, y):
+            self._open_latency_history(self._ping_layout_family)
 
     def _open_traffic_history(self, family=None):
         if TRAFFIC_HISTORY_UI is not None:
             TRAFFIC_HISTORY_UI.show(family)
+
+    def _open_latency_history(self, family="auto"):
+        if LATENCY_HISTORY_UI is not None:
+            LATENCY_HISTORY_UI.show(self._ping_layout_family if family == "auto" else family)
 
     def _ping_settings_with_groups(self, **settings):
         # The selective writer removes targets; preserve migrated destinations first.
@@ -1701,8 +1721,10 @@ def main():
     app_root.withdraw()
     app_root.report_callback_exception = MonitorWindow._log_tk_callback_exception
 
-    global TRAFFIC_HISTORY_UI
+    global TRAFFIC_HISTORY_UI, LATENCY_HISTORY_UI
     TRAFFIC_HISTORY_UI = TrafficHistoryWindow(app_root, traffic_history, fmt_speed,
+                                              cfg["window"]["accent_up"], cfg["window"]["accent_down"])
+    LATENCY_HISTORY_UI = LatencyHistoryWindow(app_root, traffic_history, fmt_speed,
                                               cfg["window"]["accent_up"], cfg["window"]["accent_down"],
                                               ping_targets=lambda: dict(ping.groups) if ping else {})
 
@@ -1769,6 +1791,7 @@ def main():
         if space_monitor is not None:
             space_monitor.stop()  # Never join a potentially blocked UIA provider from Tk.
         TRAFFIC_HISTORY_UI.close()
+        LATENCY_HISTORY_UI.close()
         recorder.stop()
         recorder.join(timeout=2)  # Final write; never hold the exit on a blocked disk.
         collector.stop()

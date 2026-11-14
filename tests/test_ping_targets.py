@@ -161,7 +161,8 @@ class LifecycleTests(unittest.TestCase):
             'enumerate_secondary_taskbars': Mock(return_value=[]), 'find_taskbar': Mock(return_value=(1, 2)),
             'wait_for_taskbar': Mock(return_value=True), 'time': clock, '_log_event': logs,
             'TrafficHistory': Mock(), 'TrafficRecorder': Mock(return_value=recorder),
-            'TrafficHistoryWindow': Mock(return_value=history_ui), 'fmt_speed': Mock(),
+            'TrafficHistoryWindow': Mock(return_value=history_ui),
+            'LatencyHistoryWindow': Mock(return_value=Mock()), 'fmt_speed': Mock(),
             'TopProcessesMonitor': Mock(return_value=top),
             'data_dir': lambda: Path('.')})
         ns['main']()

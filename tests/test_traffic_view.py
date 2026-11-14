@@ -1,7 +1,7 @@
 """Pure view logic: filter, ping axis, zoom, selection and summary."""
 import unittest
 
-from traffic_history import (ALL_SERIES, FamilyPoint as P, build_chart, selection_view, summarize,
+from traffic_history import (ALL_SERIES, KIND_SERIES, FamilyPoint as P, build_chart, selection_view, summarize,
                              x_to_time, zoom_view)
 
 NOW = 1_000_000
@@ -9,8 +9,11 @@ HOUR = 3600
 FOUR = 4 * 3600
 
 
-def chart(points, series=ALL_SERIES, now=NOW, span=HOUR):
-    return build_chart(points, 800, 360, now, span, series, fmt_time=str)
+def chart(points, series=ALL_SERIES, now=NOW, span=HOUR, kind='traffic'):
+    return build_chart(points, 800, 360, now, span, series, fmt_time=str, kind=kind)
+
+
+LATENCY = 'latency'
 
 
 class FilterTests(unittest.TestCase):
@@ -20,12 +23,14 @@ class FilterTests(unittest.TestCase):
         for span in (60, 300, 900, 2932, 3600, 14400):
             with self.subTest(span=span):
                 points = [P(NOW - span + 5 * i, 1, 1, 2) for i in range(span // 5)]
-                bands = chart(points, span=span).bands
+                bands = chart(points, span=span, kind=LATENCY).bands
                 self.assertTrue(all(left[1] >= right[0] for left, right in zip(bands, bands[1:])))
 
-    def test_everything_is_visible_by_default(self):
-        result = chart(self.POINTS)
-        self.assertTrue(result.down and result.up and result.ping and result.bands)
+    def test_everything_of_the_kind_is_visible_by_default(self):
+        result = chart(self.POINTS, KIND_SERIES['traffic'])
+        self.assertTrue(result.down and result.up)
+        result = chart(self.POINTS, KIND_SERIES[LATENCY], kind=LATENCY)
+        self.assertTrue(result.ping and result.bands)
 
     def test_only_download(self):
         result = chart(self.POINTS, {'down'})
@@ -39,14 +44,13 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(result.up[0][0][1], y0)
         self.assertEqual(result.y_ticks[-1], (y0, 50))
 
-    def test_only_ping_hides_the_left_axis(self):
-        result = chart(self.POINTS, {'ping'})
+    def test_only_ping_hides_the_bands(self):
+        result = chart(self.POINTS, {'ping'}, kind=LATENCY)
         self.assertTrue(result.ping)
-        self.assertEqual(result.y_ticks, [])
-        self.assertEqual((result.down, result.up, result.bands), ([], [], []))
+        self.assertEqual((result.down, result.up, result.bands, result.y_ticks), ([], [], [], []))
 
-    def test_only_loss_hides_both_value_axes_and_keeps_time(self):
-        result = chart(self.POINTS, {'loss'})
+    def test_only_loss_hides_the_ms_axis_and_keeps_time(self):
+        result = chart(self.POINTS, {'loss'}, kind=LATENCY)
         self.assertEqual([band[2] for band in result.bands], [1, 2])
         self.assertEqual((result.y_ticks, result.ping_ticks, result.down, result.ping), ([], [], [], []))
         self.assertTrue(result.x_ticks)
@@ -54,65 +58,66 @@ class FilterTests(unittest.TestCase):
 
 class PingAxisTests(unittest.TestCase):
     def test_ping_has_its_own_scale(self):
-        result = chart([P(NOW - 10, 1000, 1000, 0, 100)])
-        _, y0, _, y1 = result.ping_plot
+        result = chart([P(NOW - 10, 1000, 1000, 0, 100)], kind=LATENCY)
+        _, y0, _, y1 = result.plot
         self.assertEqual(result.ping[0][0][1], y0)
         self.assertEqual(result.ping_ticks, [(y1, 0), ((y0 + y1) / 2, 50), (y0, 100)])
-        self.assertEqual(result.y_ticks[-1][1], 1000)
 
     def test_ping_of_zero_ms_stays_on_the_base(self):
-        result = chart([P(NOW - 10, 1, 1, 0, 0)])
-        _, _, _, y1 = result.ping_plot
+        result = chart([P(NOW - 10, 1, 1, 0, 0)], kind=LATENCY)
+        _, _, _, y1 = result.plot
         self.assertEqual(result.ping[0][0][1], y1)
         self.assertEqual(result.ping_ticks, [(y1, 0)])
 
     def test_old_points_have_no_ping_line_and_no_axis(self):
-        result = chart([P(NOW - 10, 1, 1, 0)])
+        result = chart([P(NOW - 10, 1, 1, 0)], kind=LATENCY)
         self.assertEqual((result.ping, result.ping_ticks), ([], []))
 
     def test_missing_ping_breaks_the_line(self):
-        result = chart([P(NOW - 100, 1, 1, 0, 5), P(NOW - 95, 1, 1, 0, None), P(NOW - 90, 1, 1, 0, 5)])
+        result = chart([P(NOW - 100, 1, 1, 0, 5), P(NOW - 95, 1, 1, 0, None), P(NOW - 90, 1, 1, 0, 5)],
+                       kind=LATENCY)
         self.assertEqual(len(result.ping), 2)
 
     def test_short_ping_peak_survives_reduction(self):
         points = [P(NOW - FOUR + i * 5, 1, 1, 0, 10) for i in range(2880)]
         points[1000] = points[1000]._replace(ping=900)
-        result = chart(points, span=FOUR)
+        result = chart(points, span=FOUR, kind=LATENCY)
         self.assertEqual(result.ping_ticks[-1][1], 900)
+
 
 class TwoPingTests(unittest.TestCase):
     def test_each_ip_has_its_own_line_on_the_same_ms_scale(self):
-        result = chart([P(NOW - 20, 1, 1, 0, 10, 100), P(NOW - 10, 1, 1, 0, 50, 20)])
-        _, y0, _, y1 = result.ping_plot
+        result = chart([P(NOW - 20, 1, 1, 0, 10, 100), P(NOW - 10, 1, 1, 0, 50, 20)], kind=LATENCY)
+        _, y0, _, y1 = result.plot
         self.assertEqual(result.ping_ticks, [(y1, 0), ((y0 + y1) / 2, 50), (y0, 100)])
         self.assertEqual([y for _, y in result.ping2[0]], [y0, y1 - 20 / 100 * (y1 - y0)])
         self.assertEqual(result.ping[0][0][1], y1 - 10 / 100 * (y1 - y0))
         self.assertEqual(result.ping_worst, [])
 
     def test_missing_second_ip_has_no_line(self):
-        result = chart([P(NOW - 10, 1, 1, 0, 10)])
+        result = chart([P(NOW - 10, 1, 1, 0, 10)], kind=LATENCY)
         self.assertEqual((len(result.ping), result.ping2), (1, []))
 
     def test_old_worst_of_both_is_its_own_series_on_the_same_scale(self):
-        result = chart([P(NOW - 20, 1, 1, 0, None, None, 80), P(NOW - 10, 1, 1, 0, 40)])
-        _, y0, _, y1 = result.ping_plot
+        result = chart([P(NOW - 20, 1, 1, 0, None, None, 80), P(NOW - 10, 1, 1, 0, 40)], kind=LATENCY)
+        _, y0, _, y1 = result.plot
         self.assertEqual(result.ping_ticks[-1], (y0, 80))
         self.assertEqual(result.ping_worst[0][0][1], y0)
         self.assertEqual(len(result.ping), 1)
 
     def test_filter_shows_only_the_chosen_ping(self):
         points = [P(NOW - 10, 1, 1, 0, 10, 200, 300)]
-        only1 = chart(points, {'ping'})
+        only1 = chart(points, {'ping'}, kind=LATENCY)
         self.assertEqual((len(only1.ping), only1.ping2, only1.ping_worst, only1.ping_ticks[-1][1]), (1, [], [], 10))
-        only2 = chart(points, {'ping2'})
+        only2 = chart(points, {'ping2'}, kind=LATENCY)
         self.assertEqual((only2.ping, len(only2.ping2), only2.ping_ticks[-1][1]), ([], 1, 200))
-        onlyw = chart(points, {'pingw'})
+        onlyw = chart(points, {'pingw'}, kind=LATENCY)
         self.assertEqual((onlyw.ping, len(onlyw.ping_worst), onlyw.ping_ticks[-1][1]), ([], 1, 300))
 
     def test_short_peak_of_the_second_ip_survives_reduction(self):
         points = [P(NOW - FOUR + i * 5, 1, 1, 0, 10, 10) for i in range(2880)]
         points[1000] = points[1000]._replace(ping2=900)
-        self.assertEqual(chart(points, span=FOUR).ping_ticks[-1][1], 900)
+        self.assertEqual(chart(points, span=FOUR, kind=LATENCY).ping_ticks[-1][1], 900)
 
 
 class TwoPingSummaryTests(unittest.TestCase):
@@ -214,9 +219,15 @@ class SummaryTests(unittest.TestCase):
         return summarize(self.POINTS if points is None else points, 1, 3, series,
                          lambda v: f'{v}B', fmt_time=str)
 
-    def test_peaks_averages_and_failures_skip_empty_values(self):
-        self.assertEqual(self.text(), '1 – 3 · ↓ pico 300B, média 200.0B · ↑ pico 30B, média 20.0B'
-                                      ' · ping pico 40 ms, média 30 ms · 2 intervalos com falha')
+    TRAFFIC = KIND_SERIES['traffic']
+    LATENCY = KIND_SERIES['latency']
+
+    def test_traffic_summary_has_only_speeds(self):
+        self.assertEqual(self.text(series=self.TRAFFIC), '1 – 3 · ↓ pico 300B, média 200.0B · ↑ pico 30B, média 20.0B')
+
+    def test_latency_summary_has_the_pings_and_the_failures_only(self):
+        self.assertEqual(self.text(series=self.LATENCY),
+                         '1 – 3 · ping pico 40 ms, média 30 ms · 2 intervalos com falha')
 
     def test_only_the_visible_measure_enters(self):
         self.assertEqual(self.text(series={'up'}), '1 – 3 · ↑ pico 30B, média 20.0B')
@@ -224,10 +235,11 @@ class SummaryTests(unittest.TestCase):
 
     def test_measure_without_data_says_so(self):
         points = [P(1, None, None, 0, None)]
-        self.assertEqual(self.text(points), '1 – 3 · ↓ sem dados · ↑ sem dados · ping sem dados · 0 intervalos com falha')
+        self.assertEqual(self.text(points, self.TRAFFIC), '1 – 3 · ↓ sem dados · ↑ sem dados')
+        self.assertEqual(self.text(points, self.LATENCY), '1 – 3 · ping sem dados · 0 intervalos com falha')
 
     def test_singular_failure(self):
-        self.assertTrue(self.text([P(1, 1, 1, 2, 1)]).endswith('· 1 intervalo com falha'))
+        self.assertTrue(self.text([P(1, 1, 1, 2, 1)], self.LATENCY).endswith('· 1 intervalo com falha'))
 
     def test_zero_ms_counts_as_data(self):
         self.assertIn('ping pico 0 ms, média 0 ms', self.text([P(1, 1, 1, 0, 0)]))
