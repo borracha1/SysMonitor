@@ -1,4 +1,4 @@
-Atualizado em 2026-11-13 (1.1.0 com histórico em dois painéis, ping por IP e top 3 de CPU/MEM; versao-1.1, local, sem push)
+Atualizado em 2026-11-14 (1.1.0 com histórico em duas janelas, ping por IP e top 3 de CPU/MEM; versao-1.1, local, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -222,6 +222,12 @@ Atualizado em 2026-11-13 (1.1.0 com histórico em dois painéis, ping por IP e t
 - Cores: IP 1 `#c9a0ff`, IP 2 `#5fd7c0`, `pior dos dois` `#9aa0a6` tracejado. Janela padrão 800x480, mínimo 640x400. `Chart` ganhou `traffic_plot` e `ping_plot`; `plot` continua o total.
 - Decisões próprias: os dois painéis existem sempre (o filtro não faz o outro sumir; ele mostra `oculto pelo filtro`), assim a legenda de cada painel continua no lugar e clicável; legenda em Frames de Labels sobre o canvas (`create_window`); rótulos de IP na legenda só com o endereço (o resumo mantém `ping <IP>`); margem direita caiu de 56 para 16 px por não haver mais escala à direita.
 - TDD (testes de geometria e de janela novos), 451 testes OK e `--verificar` código 0. Capturas 1 h e 15 min em `D:/dev/temp/sysmonitor-janela/`. Sem instalador novo.
+
+### Histórico em duas janelas (2026-11-14)
+- Pedido do Mateus: "pra não ficar tanta informação junta", uma tela para tráfego (v4/v6, só download/upload) e outra para latência/perda, abertas pelo clique no que ele quer ver. Substitui a janela única de dois painéis (`a06479f..c5f7c52`, 2026-11-13); dados e CSV não mudaram.
+- Implementação: `HistoryWindow` base com `TrafficHistoryWindow` e `LatencyHistoryWindow`; `build_chart(kind=...)` de um painel só (geometria de 2 painéis, `traffic_plot`, `ping_plot`, `PANEL_GAP` e `TRAFFIC_SHARE` removidos); `_on_net_click` roteia tráfego/coluna de ping/fora; menu ganhou `Latência e perda…` (só com ping). Detalhes em [interface.md](interface.md).
+- Decisões próprias: janela 800x420 (mínimo 640x340); a de latência abre deslocada 36 px; clique na coluna de ping e item de menu abrem a família exibida ali; a janela de latência com só o filtro `perda` não mostra mensagem de ping ausente; títulos de legenda `Tráfego` e `Latência` mantidos; `Chart.y_ticks` (Mbps) e `ping_ticks` (ms) mantêm os nomes.
+- TDD, 480 testes OK e `--verificar` código 0. Capturas em `docs/agentes/telas/` (`historico-trafego-1h`, `historico-latencia-1h`, `historico-latencia-15min`, `historico-latencia-perda`). Sem instalador novo; `config.ini` local não foi tocado nem commitado.
 
 ## Manutenção
 - Ao fechar marco: atualizar este estado, cabeçalhos e áreas alteradas com o commit de código de referência.

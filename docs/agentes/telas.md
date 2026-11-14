@@ -1,4 +1,4 @@
-Atualizado em 2026-11-13 (histórico em dois painéis; limites de temperatura e cores em 2026-10-25)
+Atualizado em 2026-11-14 (histórico em duas janelas, Tráfego e Latência e perda; limites de temperatura e cores em 2026-10-25)
 
 # Telas
 
@@ -10,6 +10,12 @@ Editor Tk real capturado em 2026-10-25: quinze campos, defaults de uso 50/75/90 
 
 Os modos `docked` (faixa acima da barra) e `floating` (caixa arrastável) não foram capturados.
 
-![Histórico de tráfego em dois painéis: tráfego (Mbps) em cima, latência por IP (ms) embaixo, mesmo eixo de tempo](telas/historico-2-paineis.png)
+![Janela Tráfego (1 h, IPv4): só download e upload, escala Mbps à esquerda](telas/historico-trafego-1h.png)
 
-Janela do histórico (1 h, IPv4) capturada em 2026-11-13 em Tk real, 800x480, com cópia do histórico do Mateus (arquivo original intocado): painel de tráfego com ↓/↑, painel de latência com 8.8.8.8 (lilás), 1.1.1.1 (verde-água) e `pior dos dois` tracejado cinza, marcas de perda cruzando os dois painéis e legenda de perda sob os horários. Captura por winfo_root + CopyFromScreen com DPI aware; processos encerrados.
+![Janela Latência e perda (1 h, IPv4): uma linha de ms por IP e legenda de perda sob os horários](telas/historico-latencia-1h.png)
+
+![Janela Latência e perda (15 min)](telas/historico-latencia-15min.png)
+
+![Janela Latência e perda com faixas de perda sintéticas: escura = um IP sem resposta, forte = todos](telas/historico-latencia-perda.png)
+
+As duas janelas do histórico (desde 2026-11-14; antes era uma só, em dois painéis) foram capturadas em 2026-11-14 em Tk real, 800x420, com cópia do histórico do Mateus (original intocado): `SysMonitor · Tráfego (estimado)` com ↓/↑ e `SysMonitor · Latência e perda` com 8.8.8.8 (lilás), 1.1.1.1 (verde-água) e legenda de perda. A quarta imagem usa uma cópia do histórico com marcas de perda injetadas só para ver as faixas (o histórico real do trecho não tinha perda). Captura por winfo_root + CopyFromScreen com DPI aware; processos encerrados.

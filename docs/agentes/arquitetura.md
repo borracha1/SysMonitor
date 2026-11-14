@@ -12,7 +12,7 @@ Atualizado em 2026-11-13 (versão 1.1.0 local; ping por IP e top 3 de processos)
 | `taskbar_session.py` | Gerente Tk das secundárias, sincronização de ações/editor e fechamento global, sem coleta/UIA |
 | `net_split.py` | GetIpStatisticsEx sem admin, deltas DWORD, divisão pura de velocidades e medida da coluna |
 | `traffic_history.py` | Pontos de 5 s, CSV das últimas 4 h, gravador daemon e geometria pura do gráfico |
-| `traffic_history_ui.py` | Janela única Tk do histórico, sem I/O em disco |
+| `traffic_history_ui.py` | Janelas Tk do histórico (tráfego e latência/perda, base comum), sem I/O em disco |
 | `top_processes.py` | Puro: soma por nome, top 3 de CPU/memória, formatação, corte do tooltip da bandeja; leitura em massa por NtQuerySystemInformation e thread `TopProcessesMonitor` |
 | `hover_tooltip.py` | Tooltip Tk do widget (Toplevel do root oculto) para os rótulos CPU/MEM, guiado pelo cursor do Windows |
 | `metrics_collector.py` | `Metrics` e `Collector` usados pela edição de bandeja |
