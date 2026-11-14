@@ -16,8 +16,8 @@ python3 create_shortcut.py
 Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests -v`. Build do exe e do instalador: `powershell -NoProfile -ExecutionPolicy Bypass -File build.ps1` (ver build-e-uso.md).
 
 ## Estado
-Versão 1.1.0 (`version.py`) na `versao-1.1`, commits locais, sem push, incluindo a 1.0.3 (avisos por família; instalada e testada pelo Mateus em 2026-11-06: menu e gravação ok, reabertura não conferida). 1.0.2 publicada na `main` em `062332f` (2026-11-04), sem tag nem release; a Latest continua `v1.0.1`.
-Última mudança local (2026-11-13): histórico com uma linha de ping por IP (CSV de 11 colunas, lê 7 e 9) e top 3 de programas por CPU e por memória em tooltip do widget (rótulos CPU e MEM) e da bandeja; 433 testes OK e `--verificar` código 0, sem instalador novo (o Mateus gera). Antes disso: períodos 5/15 min/1 h/4 h, zoom, seleção com resumo, filtro clicável e linha de ping em ms no histórico; CSV de 9 colunas compatível com as 7 anteriores. TDD nas quatro tarefas, 353 testes OK e `--verificar` código 0; revisada pelo Claude, com setup gerado. Etapa inicial aprovada pelo Mateus em 2026-11-06 nos 6 itens. Esta ampliação aguarda o teste real dele. Widget existente e configuração local preservados. Detalhes em [estado.md](estado.md).
+Versão 1.1.0 (`version.py`) publicada em 2026-11-14: `main` = `versao-1.1`, tag `v1.1.0`, release oficial (Latest), aprovada pelo Mateus após teste real.
+Inclui a 1.0.3 (avisos por família), o histórico (5/15 min/1 h/4 h, zoom, seleção com resumo, filtro), duas janelas abertas pelo clique no widget (Tráfego; Latência e perda, com uma linha por IP e faixas de perda; CSV de 11 colunas, lê 7 e 9) e o top 3 de programas por CPU e por memória em tooltip do widget e da bandeja. 480 testes OK. Pendências: assinatura de código; `pip-audit` não rodado nesta release. Detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
