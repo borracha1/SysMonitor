@@ -172,17 +172,18 @@ class TrafficHistoryWindow:
         self._legend = {}
         self._legend_frames = {}
         # (frame, title, [(series, sample text, sample color, name color)])
-        groups = (('traffic', 'Tráfego', (('down', '━', self.accent_down), ('up', '━', self.accent_up))),
-                  ('latency', 'Latência', (('ping', '━', PING_COLOR), ('ping2', '━', PING2_COLOR),
-                                           ('pingw', '╌╌', PING_WORST_COLOR))),
+        groups = (('traffic', 'Tráfego', (('down', '━', self.accent_down, '↓ download'),
+                                              ('up', '━', self.accent_up, '↑ upload'))),
+                  ('latency', 'Latência', (('ping', '━', PING_COLOR, ''), ('ping2', '━', PING2_COLOR, ''),
+                                           ('pingw', '╌╌', PING_WORST_COLOR, ''))),
                   ('loss', None, ()))
         for key, title, entries in groups:
             frame = tk.Frame(canvas, bg=BG)
             self._legend_frames[key] = frame
             if title:
                 tk.Label(frame, text=title, fg=FG, bg=BG, font=('Segoe UI', 9, 'bold')).pack(side='left')
-            for name, sample, color in entries:
-                self._legend[name] = self._legend_item(frame, name, [(sample, color), ('', FG)])
+            for name, sample, color, text in entries:
+                self._legend[name] = self._legend_item(frame, name, [(sample, color), (text, FG)])
         loss = self._legend_frames['loss']
         self._legend['loss'] = self._legend_item(loss, 'loss', [('Perda:', FG), ('▌', MARK_COLORS[1]),
                                                                 ('um IP sem resposta', FG), ('▌', MARK_COLORS[2]),
