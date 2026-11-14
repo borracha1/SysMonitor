@@ -17,7 +17,7 @@ Testes automatizados (stdlib, na raiz): `py -3.12 -m unittest discover -s tests 
 
 ## Estado
 Versão 1.1.0 (`version.py`) publicada em 2026-11-14: `main` = `versao-1.1`, tag `v1.1.0`, release oficial (Latest), aprovada pelo Mateus após teste real.
-Inclui a 1.0.3 (avisos por família), o histórico (5/15 min/1 h/4 h, zoom, seleção com resumo, filtro), duas janelas abertas pelo clique no widget (Tráfego; Latência e perda, com uma linha por IP e faixas de perda; CSV de 11 colunas, lê 7 e 9) e o top 3 de programas por CPU e por memória em tooltip do widget e da bandeja. 480 testes OK. Pendências: assinatura de código; `pip-audit` não rodado nesta release. Detalhes em [estado.md](estado.md).
+Inclui a 1.0.3 (avisos por família), o histórico (5/15 min/1 h/4 h, zoom, seleção com resumo, filtro), duas janelas abertas pelo clique no widget (Tráfego; Latência e perda, com uma linha por IP e faixas de perda; CSV de 11 colunas, lê 7 e 9) e o top 3 de programas por CPU e por memória em tooltip do widget e da bandeja. 480 testes OK. Pendências: assinatura de código; `pip-audit` limpo (2026-11-14). Detalhes em [estado.md](estado.md).
 
 ## Se a tarefa mexe em… leia…
 | Se a tarefa mexe em… | Leia |
