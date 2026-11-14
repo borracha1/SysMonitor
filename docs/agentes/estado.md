@@ -1,4 +1,4 @@
-Atualizado em 2026-11-13 (1.1.0 com ping por IP no histórico e top 3 de CPU/MEM; versao-1.1, local, sem push)
+Atualizado em 2026-11-13 (1.1.0 com histórico em dois painéis, ping por IP e top 3 de CPU/MEM; versao-1.1, local, sem push)
 
 # Estado e histórico
 ## Base documentada
@@ -216,6 +216,12 @@ Atualizado em 2026-11-13 (1.1.0 com ping por IP no histórico e top 3 de CPU/MEM
 - Bandeja: tooltip do ícone de CPU e do ícone 3 (GPU/MEM; o fallback MEM também) com até 3 linhas `nome valor`, nomes cortados com `…` para caber em 127 caracteres; o aviso (LHM/NVML) só fica se ainda couber. A bandeja amostra continuamente (2 s) porque o tooltip do ícone é estático.
 - TDD em todas as etapas; suíte completa `Ran 433 tests`, OK; `--verificar` do widget e da bandeja com código 0. Não conferido: o tooltip no Explorer real (o widget em execução não foi reiniciado); só Tk real isolado, com a janela criada, preenchida pela amostragem real e destruída. Instalador não gerado.
 - Commits locais na `versao-1.1`: ping por IP no histórico; módulo `top_processes`; bandeja; tooltip do widget; documentação.
+
+### Janela do histórico em dois painéis (2026-11-13)
+- Pedido do Mateus: o design da janela estava bagunçado (ping e tráfego no mesmo plot com duas escalas, laranja do ping 2 parecido com o download, legenda única misturada). Desenho aprovado A1: tráfego em cima, latência embaixo, mesmo eixo X, ms à esquerda, legenda por painel, perda sob os horários.
+- Cores: IP 1 `#c9a0ff`, IP 2 `#5fd7c0`, `pior dos dois` `#9aa0a6` tracejado. Janela padrão 800x480, mínimo 640x400. `Chart` ganhou `traffic_plot` e `ping_plot`; `plot` continua o total.
+- Decisões próprias: os dois painéis existem sempre (o filtro não faz o outro sumir; ele mostra `oculto pelo filtro`), assim a legenda de cada painel continua no lugar e clicável; legenda em Frames de Labels sobre o canvas (`create_window`); rótulos de IP na legenda só com o endereço (o resumo mantém `ping <IP>`); margem direita caiu de 56 para 16 px por não haver mais escala à direita.
+- TDD (testes de geometria e de janela novos), 451 testes OK e `--verificar` código 0. Capturas 1 h e 15 min em `D:/dev/temp/sysmonitor-janela/`. Sem instalador novo.
 
 ## Manutenção
 - Ao fechar marco: atualizar este estado, cabeçalhos e áreas alteradas com o commit de código de referência.
