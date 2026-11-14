@@ -1,4 +1,4 @@
-Atualizado em 2026-11-14 (1.1.0 na versao-1.1: histórico em duas janelas, ping por IP e top 3 de CPU/MEM, sem push; Latest v1.0.1)
+Atualizado em 2026-11-14 (release oficial v1.1.0 na main; Latest v1.1.0)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
