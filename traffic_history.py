@@ -264,7 +264,10 @@ class TrafficRecorder(threading.Thread):
 
 
 GAP_S = 15
-MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 12, 56, 26
+# Top: legend row of the traffic panel; bottom: time labels and the loss legend.
+MARGIN_LEFT, MARGIN_TOP, MARGIN_RIGHT, MARGIN_BOTTOM = 76, 30, 16, 52
+PANEL_GAP = 42  # Between the panels: breathing room and the latency legend row.
+TRAFFIC_SHARE = 0.62
 TICK_STEPS = (15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200)
 # 'ping' is the IP 1 line, 'ping2' the IP 2 line, 'pingw' the old worst-of-both line.
 ALL_SERIES = frozenset({'down', 'up', 'ping', 'ping2', 'pingw', 'loss'})
@@ -272,8 +275,11 @@ PING_SERIES = (('ping', 'ping'), ('ping2', 'ping2'), ('pingw', 'worst'))
 MIN_VIEW_S = 60
 ZOOM_STEP = 0.75
 
-Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks ping ping_ticks ping2 ping_worst',
-                   defaults=([], []))
+# plot: both panels together (zoom and selection use its x range); traffic_plot and ping_plot:
+# the two stacked panels, same x range. y_ticks belong to the traffic panel, ping_ticks to the ping one.
+Chart = namedtuple('Chart', 'plot down up bands x_ticks y_ticks ping ping_ticks ping2 ping_worst '
+                            'traffic_plot ping_plot',
+                   defaults=([], [], None, None))
 
 
 def local_hhmm(epoch):
@@ -297,8 +303,10 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
     peaks and failures survive when there are more points than pixels."""
     x0, y0 = MARGIN_LEFT, MARGIN_TOP
     x1, y1 = width - MARGIN_RIGHT, height - MARGIN_BOTTOM
-    if x1 - x0 < 2 or y1 - y0 < 2:
+    if x1 - x0 < 2 or y1 - y0 - PANEL_GAP < 4:
         return None
+    traffic_bottom = y0 + round((y1 - y0 - PANEL_GAP) * TRAFFIC_SHARE)
+    ping_top = traffic_bottom + PANEL_GAP
     pixels = x1 - x0
     start = end - span_s
     groups = {}
@@ -321,7 +329,7 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
         return max((group[name] for _, group in ordered for name in names if group[name] is not None),
                    default=None)
 
-    def segments(name, top):
+    def segments(name, top, panel_top, panel_bottom):
         result, current, previous = [], [], None
         for x, group in ordered:
             value = group[name]
@@ -329,7 +337,7 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
                 result.append(current)
                 current = []
             if value is not None:
-                current.append((x, y1 - (value / top) * (y1 - y0)))
+                current.append((x, panel_bottom - (value / top) * (panel_bottom - panel_top)))
             previous = group['last']
         if current:
             result.append(current)
@@ -338,25 +346,25 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
     speeds = [name for name in ('down', 'up') if name in series]
     speed_peak = peak_of(*speeds) if speeds else None
     speed_top = speed_peak or 1
-    down = segments('down', speed_top) if 'down' in series else []
-    up = segments('up', speed_top) if 'up' in series else []
+    down = segments('down', speed_top, y0, traffic_bottom) if 'down' in series else []
+    up = segments('up', speed_top, y0, traffic_bottom) if 'up' in series else []
     if not speeds:
         y_ticks = []
     elif not speed_peak:
-        y_ticks = [(y1, 0)]
+        y_ticks = [(traffic_bottom, 0)]
     else:
-        y_ticks = [(y1, 0), ((y0 + y1) / 2, speed_top / 2), (y0, speed_top)]
+        y_ticks = [(traffic_bottom, 0), ((y0 + traffic_bottom) / 2, speed_top / 2), (y0, speed_top)]
 
     ping_fields = [field for name, field in PING_SERIES if name in series]
     ping_peak = peak_of(*ping_fields) if ping_fields else None
-    ping_lines = {name: segments(field, ping_peak or 1) if name in series else []
+    ping_lines = {name: segments(field, ping_peak or 1, ping_top, y1) if name in series else []
                   for name, field in PING_SERIES}
     if ping_peak is None:
         ping_ticks = []
     elif not ping_peak:
         ping_ticks = [(y1, 0)]
     else:
-        ping_ticks = [(y1, 0), ((y0 + y1) / 2, round(ping_peak / 2)), (y0, ping_peak)]
+        ping_ticks = [(y1, 0), ((ping_top + y1) / 2, round(ping_peak / 2)), (ping_top, ping_peak)]
 
     band_width = max(1, math.ceil(BUCKET_S / span_s * pixels))
     bands = []
@@ -372,7 +380,7 @@ def build_chart(points, width, height, end, span_s, series=ALL_SERIES, fmt_time=
         x_ticks.append((x0 + (tick - start) / span_s * pixels, formatter(tick)))
         tick += step
     return Chart((x0, y0, x1, y1), down, up, bands, x_ticks, y_ticks, ping_lines['ping'], ping_ticks,
-                 ping_lines['ping2'], ping_lines['pingw'])
+                 ping_lines['ping2'], ping_lines['pingw'], (x0, y0, x1, traffic_bottom), (x0, ping_top, x1, y1))
 
 
 def _slide(start, span, now):

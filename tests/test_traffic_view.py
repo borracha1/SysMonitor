@@ -55,14 +55,14 @@ class FilterTests(unittest.TestCase):
 class PingAxisTests(unittest.TestCase):
     def test_ping_has_its_own_scale(self):
         result = chart([P(NOW - 10, 1000, 1000, 0, 100)])
-        _, y0, _, y1 = result.plot
+        _, y0, _, y1 = result.ping_plot
         self.assertEqual(result.ping[0][0][1], y0)
         self.assertEqual(result.ping_ticks, [(y1, 0), ((y0 + y1) / 2, 50), (y0, 100)])
-        self.assertEqual(result.y_ticks[-1], (y0, 1000))
+        self.assertEqual(result.y_ticks[-1][1], 1000)
 
     def test_ping_of_zero_ms_stays_on_the_base(self):
         result = chart([P(NOW - 10, 1, 1, 0, 0)])
-        _, _, _, y1 = result.plot
+        _, _, _, y1 = result.ping_plot
         self.assertEqual(result.ping[0][0][1], y1)
         self.assertEqual(result.ping_ticks, [(y1, 0)])
 
@@ -83,7 +83,7 @@ class PingAxisTests(unittest.TestCase):
 class TwoPingTests(unittest.TestCase):
     def test_each_ip_has_its_own_line_on_the_same_ms_scale(self):
         result = chart([P(NOW - 20, 1, 1, 0, 10, 100), P(NOW - 10, 1, 1, 0, 50, 20)])
-        _, y0, _, y1 = result.plot
+        _, y0, _, y1 = result.ping_plot
         self.assertEqual(result.ping_ticks, [(y1, 0), ((y0 + y1) / 2, 50), (y0, 100)])
         self.assertEqual([y for _, y in result.ping2[0]], [y0, y1 - 20 / 100 * (y1 - y0)])
         self.assertEqual(result.ping[0][0][1], y1 - 10 / 100 * (y1 - y0))
@@ -95,7 +95,7 @@ class TwoPingTests(unittest.TestCase):
 
     def test_old_worst_of_both_is_its_own_series_on_the_same_scale(self):
         result = chart([P(NOW - 20, 1, 1, 0, None, None, 80), P(NOW - 10, 1, 1, 0, 40)])
-        _, y0, _, y1 = result.plot
+        _, y0, _, y1 = result.ping_plot
         self.assertEqual(result.ping_ticks[-1], (y0, 80))
         self.assertEqual(result.ping_worst[0][0][1], y0)
         self.assertEqual(len(result.ping), 1)
