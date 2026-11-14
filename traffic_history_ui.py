@@ -19,11 +19,14 @@ NORMAL_FG = 'SystemButtonText'
 LEGEND_ACTIVE_BG = '#3a3f46'
 GRID = '#33373d'
 PING_COLOR = '#c9a0ff'
-PING2_COLOR = '#ffb454'
-PING_WORST_COLOR = '#8fd6c4'
+PING2_COLOR = '#5fd7c0'
+PING_WORST_COLOR = '#9aa0a6'
+PING_WORST_DASH = (4, 3)
+DIM_FG = '#8a8f96'
 SELECTION_OUTLINE = '#7fb3e6'
 MARK_COLORS = {1: '#6b2a2a', 2: '#d83a3a'}
-WIDTH, HEIGHT = 800, 400
+WIDTH, HEIGHT = 800, 480
+MIN_WIDTH, MIN_HEIGHT = 640, 400
 REFRESH_MS = 5000
 DRAG_MIN_PX = 4
 PERIODS = ((300, '5 min'), (900, '15 min'), (3600, '1 h'), (14400, '4 h'))
@@ -79,6 +82,7 @@ class TrafficHistoryWindow:
         self.canvas = None
         self._buttons = {}
         self._legend = {}
+        self._legend_frames = {}
         self._summary = None
         self._summary_shown = False
         self._chart = None
@@ -102,6 +106,7 @@ class TrafficHistoryWindow:
         self.canvas = None
         self._buttons = {}
         self._legend = {}
+        self._legend_frames = {}
         self._summary = None
         self._summary_shown = False
         self._chart = None
@@ -125,7 +130,7 @@ class TrafficHistoryWindow:
         if work is None:
             work = (0, 0, self.master.winfo_screenwidth(), self.master.winfo_screenheight())
         window.geometry(centered_geometry(work, WIDTH, HEIGHT))
-        window.minsize(620, 280)
+        window.minsize(MIN_WIDTH, MIN_HEIGHT)
         window.protocol('WM_DELETE_WINDOW', self.close)
         window.bind('<Escape>', self._on_escape)
         for key in ('<plus>', '<equal>', '<KP_Add>'):
@@ -133,10 +138,10 @@ class TrafficHistoryWindow:
         for key in ('<minus>', '<KP_Subtract>'):
             window.bind(key, lambda event: self._zoom(1 / ZOOM_STEP))
         self._build_buttons(window)
-        self._build_legend(window)
+        self.canvas = tk.Canvas(window, bg=BG, highlightthickness=0)
+        self._build_legend(self.canvas)
         self._summary = tk.Label(window, text='', fg=FG, bg=BG, anchor='w', justify='left',
                                  wraplength=WIDTH - 16)
-        self.canvas = tk.Canvas(window, bg=BG, highlightthickness=0)
         self.canvas.pack(fill='both', expand=True)
         self.canvas.bind('<Configure>', lambda event: self.redraw())
         self.canvas.bind('<ButtonPress-1>', self._drag_start)
@@ -162,24 +167,37 @@ class TrafficHistoryWindow:
             button = tk.Button(row, text=text, width=3, command=lambda value=factor: self._zoom(value))
             button.pack(side='left', padx=(14 if index == 0 else 2, 2))
 
-    def _build_legend(self, window):
-        row = tk.Frame(window, bg=BG)
-        row.pack(fill='x', padx=8, pady=(0, 2))
+    def _build_legend(self, canvas):
+        """One legend per panel, placed over the canvas above its panel; loss goes under the chart."""
         self._legend = {}
-        for name, items in (('down', (('↓ download', self.accent_down),)),
-                            ('up', (('↑ upload', self.accent_up),)),
-                            ('ping', (('ping', PING_COLOR),)),
-                            ('ping2', (('ping 2', PING2_COLOR),)),
-                            ('pingw', (('ping (pior dos dois)', PING_WORST_COLOR),)),
-                            ('loss', (('perda:', FG), ('▌', MARK_COLORS[1]), ('um IP sem resposta', FG),
-                                      ('▌', MARK_COLORS[2]), ('todos sem resposta', FG)))):
-            labels = []
-            for index, (text, color) in enumerate(items):
-                label = tk.Label(row, text=text, fg=color, bg=BG, cursor='hand2')
-                label.pack(side='left', padx=(10 if index == 0 else 0, 2))
-                label.bind('<Button-1>', lambda event, value=name: self._select_series(value))
-                labels.append(label)
-            self._legend[name] = labels
+        self._legend_frames = {}
+        # (frame, title, [(series, sample text, sample color, name color)])
+        groups = (('traffic', 'Tráfego', (('down', '━', self.accent_down), ('up', '━', self.accent_up))),
+                  ('latency', 'Latência', (('ping', '━', PING_COLOR), ('ping2', '━', PING2_COLOR),
+                                           ('pingw', '╌╌', PING_WORST_COLOR))),
+                  ('loss', None, ()))
+        for key, title, entries in groups:
+            frame = tk.Frame(canvas, bg=BG)
+            self._legend_frames[key] = frame
+            if title:
+                tk.Label(frame, text=title, fg=FG, bg=BG, font=('Segoe UI', 9, 'bold')).pack(side='left')
+            for name, sample, color in entries:
+                self._legend[name] = self._legend_item(frame, name, [(sample, color), ('', FG)])
+        loss = self._legend_frames['loss']
+        self._legend['loss'] = self._legend_item(loss, 'loss', [('Perda:', FG), ('▌', MARK_COLORS[1]),
+                                                                ('um IP sem resposta', FG), ('▌', MARK_COLORS[2]),
+                                                                ('todos sem resposta', FG)])
+
+    def _legend_item(self, frame, name, parts):
+        """Clickable labels of one legend entry. A series entry is [colour sample, name] on screen
+        and returned as [name, sample], so labels[0] is the text the code rewrites."""
+        labels = []
+        for index, (text, color) in enumerate(parts):
+            label = tk.Label(frame, text=text, fg=color, bg=BG, cursor='hand2')
+            label.pack(side='left', padx=((12 if name != 'loss' else 6) if index == 0 else 0, 3))
+            label.bind('<Button-1>', lambda event, value=name: self._select_series(value))
+            labels.append(label)
+        return labels if name == 'loss' else labels[::-1]
 
     def _select_family(self, family):
         self.family = family
@@ -276,8 +294,9 @@ class TrafficHistoryWindow:
         self.canvas.delete(drag['item'])
         self.redraw()
 
-    def _ping_labels(self, points):
-        """Legend/summary text of each ping series; '' hides one that has no IP nor data."""
+    def _ping_labels(self, points, legend=False):
+        """Text of each ping series; '' hides one that has no IP nor data. The summary says
+        'ping <ip>'; the legend sits under the 'Latência' title and says just the IP."""
         try:
             targets = tuple(self.ping_targets().get(self.family, ()))
         except Exception:  # The legend must never stop the chart.
@@ -286,19 +305,30 @@ class TrafficHistoryWindow:
         for position, (name, field) in enumerate((('ping', 'ping'), ('ping2', 'ping2'))):
             ip = targets[position] if position < len(targets) else ''
             if ip:
-                labels[name] = f'ping {ip}'
+                labels[name] = ip if legend else f'ping {ip}'
             elif any(getattr(point, field) is not None for point in points):
                 labels[name] = 'ping' if position == 0 else 'ping 2'
             else:
                 labels[name] = ''
         has_worst = any(point.worst is not None for point in points)
-        labels['pingw'] = 'ping (pior dos dois)' if has_worst else ''
+        labels['pingw'] = ('pior dos dois' if legend else 'ping (pior dos dois)') if has_worst else ''
         return labels
 
+    @staticmethod
+    def _sample_text(name):
+        return '╌╌' if name == 'pingw' else '━'
+
     def _update_legend_text(self, labels):
-        for name, text in labels.items():
-            for label in self._legend.get(name, ()):
-                label.config(text=text, bg=LEGEND_ACTIVE_BG if name == self.series_filter else BG)
+        for name, labels_of in self._legend.items():
+            background = LEGEND_ACTIVE_BG if name == self.series_filter else BG
+            text = labels.get(name)
+            for index, label in enumerate(labels_of):
+                if text is None:  # Fixed text: only the highlight changes.
+                    label.config(bg=background)
+                    continue
+                # labels_of[1] is the colour sample: it disappears together with its name.
+                label.config(text=text if index == 0 else (self._sample_text(name) if text else ''),
+                             bg=background)
 
     def _update_summary(self, points, start, end, series, labels=None):
         if self.view is None:
@@ -312,6 +342,22 @@ class TrafficHistoryWindow:
             self._summary.pack(fill='x', padx=8, pady=(0, 2), before=self.canvas)
             self._summary_shown = True
 
+    def _place_legends(self, chart):
+        x0, _, _, y1 = chart.plot
+        for key, y, anchor in (('traffic', chart.traffic_plot[1] - 4, 'sw'),
+                               ('latency', chart.ping_plot[1] - 4, 'sw'), ('loss', y1 + 24, 'nw')):
+            self.canvas.create_window(x0 - 4, y, window=self._legend_frames[key], anchor=anchor)
+
+    def _draw_panel(self, panel, ticks, fmt, message):
+        canvas = self.canvas
+        x0, y0, x1, y1 = panel
+        canvas.create_line(x0, y1, x1, y1, fill=FG)
+        for y, value in ticks:
+            canvas.create_line(x0, y, x1, y, fill=GRID)
+            canvas.create_text(x0 - 6, y, text=fmt(value), fill=FG, anchor='e')
+        if message:
+            canvas.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=message, fill=DIM_FG)
+
     def redraw(self):
         canvas = self.canvas
         if canvas is None or self._drag is not None:
@@ -320,32 +366,40 @@ class TrafficHistoryWindow:
         start, end = self._current_range()
         series = self._visible_series()
         points = self.history.points_between(self.family, start, end)
-        labels = self._ping_labels(points)
-        self._update_legend_text(labels)
-        self._update_summary(points, start, end, series, {name: text for name, text in labels.items() if text})
+        self._update_legend_text(self._ping_labels(points, legend=True))
+        self._update_summary(points, start, end, series,
+                             {name: text for name, text in self._ping_labels(points).items() if text})
         chart = self._chart = build_chart(points, canvas.winfo_width(), canvas.winfo_height(),
                                           end, end - start, series)
         if chart is None:
             return
         x0, y0, x1, y1 = chart.plot
-        for left, right, mark in chart.bands:
-            canvas.create_rectangle(left, y0, right, y1, fill=MARK_COLORS[mark], width=0)
-        for y, value in chart.y_ticks:
-            canvas.create_line(x0, y, x1, y, fill=GRID)
-            canvas.create_text(x0 - 6, y, text=self.fmt_speed(value), fill=FG, anchor='e')
-        for y, value in chart.ping_ticks:
-            canvas.create_text(x1 + 6, y, text=f'{value} ms', fill=PING_COLOR, anchor='w')
+        self._place_legends(chart)
+        traffic_message = None if series & {'down', 'up'} else 'oculto pelo filtro'
+        if not series & {'ping', 'ping2', 'pingw'}:
+            ping_message = 'oculto pelo filtro'
+        elif not (chart.ping or chart.ping2 or chart.ping_worst):
+            ping_message = 'sem dados de ping'
+        else:
+            ping_message = None
+        for panel in (chart.traffic_plot, chart.ping_plot):  # Loss marks cross both panels.
+            for left, right, mark in chart.bands:
+                canvas.create_rectangle(left, panel[1], right, panel[3], fill=MARK_COLORS[mark], width=0)
+        self._draw_panel(chart.traffic_plot, chart.y_ticks, self.fmt_speed, traffic_message)
+        self._draw_panel(chart.ping_plot, chart.ping_ticks, lambda value: f'{value} ms', ping_message)
         for x, text in chart.x_ticks:
             canvas.create_line(x, y1, x, y1 + 4, fill=FG)
             canvas.create_text(x, y1 + 6, text=text, fill=FG, anchor='n')
-        for segments, color in ((chart.up, self.accent_up), (chart.down, self.accent_down),
-                                (chart.ping_worst, PING_WORST_COLOR), (chart.ping2, PING2_COLOR),
-                                (chart.ping, PING_COLOR)):
+        for segments, color, dash in ((chart.up, self.accent_up, None), (chart.down, self.accent_down, None),
+                                      (chart.ping_worst, PING_WORST_COLOR, PING_WORST_DASH),
+                                      (chart.ping2, PING2_COLOR, None), (chart.ping, PING_COLOR, None)):
             for segment in segments:
                 coordinates = [value for point in segment for value in point]
                 if len(segment) == 1:  # create_line needs two points.
                     coordinates += [segment[0][0] + 1, segment[0][1]]
-                canvas.create_line(*coordinates, fill=color, width=1)
+                options = {'dash': dash} if dash else {}
+                canvas.create_line(*coordinates, fill=color, width=1, **options)
         if not points:
             message = 'Coletando dados…' if self.view is None else 'Sem dados neste trecho'
-            canvas.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=message, fill=FG)
+            canvas.create_text((x0 + x1) / 2, (chart.traffic_plot[1] + chart.traffic_plot[3]) / 2,
+                               text=message, fill=FG)
