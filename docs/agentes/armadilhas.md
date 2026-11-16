@@ -1,4 +1,4 @@
-Atualizado em 2026-11-13 (células de rede Win32; top 3 de processos)
+Atualizado em 2026-11-16 (falha de embed: retentativas e volta à barra)
 
 # Armadilhas e decisões
 | Problema / decisão | Causa e regra para não repetir | Fonte |
@@ -24,6 +24,7 @@ Atualizado em 2026-11-13 (células de rede Win32; top 3 de processos)
 | Molde da rede aparece preto quando faltam células | O molde não é transparente na tela real: sai #000000, não a cor-chave #010101. CreateWindowEx recusado não gera erro no Tk: a célula pode ficar mapeada com winfo_id() 0. Taskbar deve ter host vazio; forçar HWND antes de ativar/mapear, abortar no primeiro 0 e destruir todas as células da tentativa, mantendo total e cor normal. Repetir no próximo tick; log único até sucesso. Motivo real da recusa ainda desconhecido | `_create_net_cells`, `_update_net_split`, `tests/test_net_cells_window.py` |
 | Top 3 de processos lento demais | `Process.cpu_percent` + `memory_info` por processo custaram ~4 s por leitura (473 processos, HVCI): inviável até em thread. Ler todos de uma vez com `NtQuerySystemInformation(5)` (~12 ms, sem privilégio), argtypes explícitos e `WinDLL` privado, delta de CPU por (pid, criação); psutil só como alternativa lenta | `top_processes.py`, `tests/test_top_processes.py` |
 | Tooltip no modo taskbar não aparecia ou piscava | O texto colorkey só recebe Enter/Leave nos traços das letras; o resto vai para a apanhadora alpha=1. Ligar `<Motion>/<Enter>/<Leave>` no Toplevel E na apanhadora e decidir o rótulo pelo cursor do Windows (`GetCursorPos`/`GetWindowRect`), com poll de 250 ms para sumir. O tooltip é Toplevel do root oculto, nunca do widget no Explorer | `MonitorWindow._hover_hit`, `hover_tooltip.py` |
+| Falha de embed no logon deixava o widget docked (flutuando) para sempre | A 1ª falha de `embed_failed` virava docked pelo resto da sessão e 4 pontos não logavam o motivo. Regra: tentar a barra 5x com 2 s entre tentativas (`embedding failed (<motivo>); attempt N/5`); só então docked com `taskbar_retry`, que checa a barra a cada 60 s e volta com UMA tentativa (falhou: docked de novo). Vale para os 3 fallbacks automáticos; `display_mode = docked` do config nunca volta. Todo ponto de falha grava `embed_failure`/`TaskbarEmbedder.failure` com o erro Win32 | `main()`, `MonitorWindow._embed_in_taskbar/_retry_taskbar`, `tests/test_embed_retry.py` |
 
 ## Barras secundárias e testes Tk
 - Shell_SecondaryTrayWnd não tem TrayNotifyWnd: nunca posicionar junto da borda da tela como se ela fosse bandeja. Sem UIA válida daquela barra, ocultar/não criar; usar SystemTray.* para o limite direito, mesmo com mod Windhawk.
