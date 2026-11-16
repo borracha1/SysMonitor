@@ -469,10 +469,12 @@ class TaskbarEmbedder:
         self._layout_key = None
         self._overflow_situations = set()
         self._positioning = False
+        self.failure = None  # short reason of the last embed() failure
 
     def embed(self) -> bool:
         tray = self.target_tray if self.target_tray is not None else find_taskbar()[0]
         if not tray:
+            self.failure = "taskbar window (Shell_TrayWnd) not found"
             return False
         if self.catcher_hwnd and not self._embed_catcher(tray):
             return False
@@ -485,7 +487,9 @@ class TaskbarEmbedder:
         ctypes.set_last_error(0)
         _u32.SetParent(h, tray)
         if _u32.GetParent(h) != tray:
-            _log_event(f"embed: SetParent refused (err={ctypes.get_last_error()})")
+            err = ctypes.get_last_error()
+            self.failure = f"widget SetParent refused (err={err})"
+            _log_event(f"embed: SetParent refused (err={err})")
             _u32.SetWindowLongPtrW(h, GWL_STYLE, style)
             return False
         ex = _u32.GetWindowLongPtrW(h, GWL_EXSTYLE)
@@ -501,16 +505,22 @@ class TaskbarEmbedder:
     def _embed_catcher(self, tray):
         h = self.catcher_hwnd
         if not _u32.IsWindow(h):
+            self.failure = f"catcher hwnd {h} is not a window"
             return False
         ex = _u32.GetWindowLongPtrW(h, GWL_EXSTYLE)
         _u32.SetWindowLongPtrW(h, GWL_EXSTYLE, ex & ~WS_EX_LAYERED)
         style = _u32.GetWindowLongPtrW(h, GWL_STYLE)
         _u32.SetWindowLongPtrW(h, GWL_STYLE, (style & ~WS_POPUP) | WS_CHILD)
+        ctypes.set_last_error(0)
         _u32.SetParent(h, tray)
         if _u32.GetParent(h) != tray:
+            self.failure = f"catcher SetParent refused (err={ctypes.get_last_error()})"
             return False
         _u32.SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_LAYERED)
-        return bool(_u32.SetLayeredWindowAttributes(h, 0, 1, LWA_ALPHA))
+        if not _u32.SetLayeredWindowAttributes(h, 0, 1, LWA_ALPHA):
+            self.failure = f"catcher SetLayeredWindowAttributes failed (err={ctypes.get_last_error()})"
+            return False
+        return True
 
     def healthy(self) -> bool:
         if not self.tray or not _u32.IsWindow(self.hwnd):
@@ -717,7 +727,7 @@ class MonitorWindow:
     a single long-lived Tk + per-window Toplevel does not crash."""
 
     def __init__(self, master: tk.Tk, cfg: configparser.ConfigParser, metrics: Metrics, mode: str, ping_monitor=None,
-                 space_monitor=None, taskbar_hwnd=None, session=None):
+                 space_monitor=None, taskbar_hwnd=None, session=None, taskbar_retry=False):
         self.session = session
         self.taskbar_hwnd = taskbar_hwnd
         self.space_monitor = space_monitor
@@ -732,6 +742,9 @@ class MonitorWindow:
         self.mode = mode
         self.exit_requested = False  # True only when the user chose "Fechar"
         self.embed_failed = False
+        self.embed_failure = None
+        self.retry_taskbar_requested = False
+        self._retry_after_id = None
         self.click_catcher = None
         self.embedder = None
         self._closing = False
@@ -773,6 +786,8 @@ class MonitorWindow:
             raise
 
         self._after_id = self.root.after(200, self._tick)
+        if taskbar_retry and self.mode == "docked":
+            self._retry_after_id = self.root.after(60000, self._retry_taskbar)
 
     # -- layout ---------------------------------------------------------
     def _build_ui(self):
@@ -1041,7 +1056,7 @@ class MonitorWindow:
         tray = target if target is not None else find_taskbar()[0]
         tr = _win_rect(tray)
         if tr is None:
-            self.embed_failed = True
+            self._fail_embed(f"taskbar rect unavailable (hwnd={tray})")
             return
         height = tr.bottom - tr.top
         self._layout_embedded(height)
@@ -1051,7 +1066,7 @@ class MonitorWindow:
         self.root.update()
         wrapper = _u32.GetParent(self.root.winfo_id())  # Tk's real top-level HWND
         if not wrapper:
-            self.embed_failed = True
+            self._fail_embed("Tk wrapper hwnd is 0")
             return
         self.click_catcher = tk.Toplevel(self.master)
         self.click_catcher.overrideredirect(True)
@@ -1060,7 +1075,7 @@ class MonitorWindow:
         self.click_catcher.update_idletasks()
         catcher_hwnd = _u32.GetParent(self.click_catcher.winfo_id())
         if not catcher_hwnd:
-            self.embed_failed = True
+            self._fail_embed("catcher hwnd is 0")
             return
         self.embedder = TaskbarEmbedder(wrapper, self.embed_width,
                                        on_height_change=self._layout_embedded,
@@ -1073,7 +1088,24 @@ class MonitorWindow:
         self.embedder.on_font_change = self._apply_taskbar_font
         self.embedder.on_layout_change = self._apply_space_level
         if not self.embedder.embed():
-            self.embed_failed = True
+            self._fail_embed(self.embedder.failure or "embed() failed (no reason recorded)")
+
+    def _fail_embed(self, reason: str):
+        self.embed_failed = True
+        self.embed_failure = reason
+
+    def _retry_taskbar(self):
+        """Docked fallback: every 60 s check whether the taskbar is back; if so
+        ask main() to rebuild in taskbar mode (same exit path as reconfigure)."""
+        self._retry_after_id = None
+        if self._closing:
+            return
+        tray, notify = find_taskbar()
+        if tray and notify:
+            self.retry_taskbar_requested = True
+            self._destroy()
+        else:
+            self._retry_after_id = self.root.after(60000, self._retry_taskbar)
 
     def _dock_to_taskbar(self):
         """Docked mode: a thin strip directly ABOVE the taskbar. A top-level
@@ -1562,6 +1594,12 @@ class MonitorWindow:
             except tk.TclError:
                 pass
             self._after_id = None
+        if self._retry_after_id is not None:
+            try:
+                self.root.after_cancel(self._retry_after_id)
+            except tk.TclError:
+                pass
+            self._retry_after_id = None
         if self.click_catcher is not None:
             try:
                 self.click_catcher.destroy()
@@ -1735,12 +1773,18 @@ def main():
     space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
     if space_monitor is not None:
         space_monitor.start()
-    session = None
-    if mode == 'taskbar':
-        session = TaskbarSession(app_root, cfg, metrics, ping, space_monitor, MonitorWindow,
-                                 enumerate_secondary_taskbars, lambda: find_taskbar()[0], _log_event)
-        session.start()
+    def make_session():
+        new_session = TaskbarSession(app_root, cfg, metrics, ping, space_monitor, MonitorWindow,
+                                     enumerate_secondary_taskbars, lambda: find_taskbar()[0], _log_event)
+        new_session.start()
+        return new_session
+
+    session = make_session() if mode == 'taskbar' else None
     quick_losses = 0
+    embed_failures = 0
+    auto_docked = False   # docked is an automatic fallback (not display_mode=docked)
+    returning = False     # this attempt is the single return trip to the taskbar
+    last_return_failure = None  # log each distinct return-trip failure once, not every 60 s
     window = None
     try:
         while True:
@@ -1753,25 +1797,55 @@ def main():
                     break
                 _log_event("taskbar not found after 60s; falling back to docked mode")
                 mode = "docked"
+                auto_docked = True
             if mode != 'taskbar' and session is not None:
                 session.close()
                 session = None
             started = time.monotonic()
             window = None
+            return_trip, returning = returning, False
             window = MonitorWindow(app_root, cfg, metrics, mode, ping_monitor=ping,
                                    space_monitor=space_monitor if mode == 'taskbar' else None,
-                                   session=session)
+                                   session=session, taskbar_retry=(mode == "docked" and auto_docked))
             if session is not None:
                 session.attach_primary(window)
             if window.embed_failed:
-                _log_event("embedding failed; falling back to docked mode for this session")
+                reason = window.embed_failure or "unknown reason"
+                embed_failures += 1
                 window._destroy()
+                if return_trip:
+                    if reason != last_return_failure:
+                        _log_event(f"embedding failed on return to taskbar ({reason}); staying docked"
+                                   " (same failure again will not be logged)")
+                        last_return_failure = reason
+                elif embed_failures >= 5:
+                    _log_event(f"embedding failed 5x ({reason}); docked mode, retrying taskbar every 60s")
+                else:
+                    _log_event(f"embedding failed ({reason}); attempt {embed_failures}/5")
+                    if session is not None:
+                        session.wait(2000)
+                    else:
+                        time.sleep(2)
+                    continue
                 mode = "docked"
+                auto_docked = True
                 continue
+            if mode == "taskbar":
+                embed_failures = 0
+                last_return_failure = None
             window.run()
             if window.exit_requested:
                 break
             if window.reconfigure_requested:
+                continue
+            if window.retry_taskbar_requested:
+                if last_return_failure is None:
+                    _log_event("taskbar is back; returning to taskbar mode")
+                mode = "taskbar"
+                auto_docked = False
+                returning = True
+                if session is None:
+                    session = make_session()
                 continue
             # The window went away without the user closing it: in taskbar
             # mode that means Explorer restarted and destroyed our parent.
@@ -1781,6 +1855,7 @@ def main():
             if quick_losses >= 5 and mode == "taskbar":
                 _log_event("window lost 5x in a row quickly; falling back to docked mode")
                 mode = "docked"
+                auto_docked = True
             if session is not None:
                 session.wait(2000)
             else:
