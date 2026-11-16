@@ -1,4 +1,4 @@
-Atualizado em 2026-11-16 (1.1.1 local: falha de embed não deixa o widget flutuando)
+Atualizado em 2026-11-16 (1.1.1 na versao-1.1.1, push feito: falha de embed não deixa o widget flutuando)
 
 # Estado e histórico
 ## Base documentada
@@ -236,6 +236,6 @@ Atualizado em 2026-11-16 (1.1.1 local: falha de embed não deixa o widget flutua
 
 - Release oficial v1.1.0 (2026-11-14, aprovada pelo Mateus: "pode fazer o commit e publicar"; testou top 3 CPU/MEM e as janelas): seção A reconferida — gitleaks sem vazamentos (65+ commits); dependências inalteradas desde a 1.0.2 (`requirements-build.txt` igual); código novo sem rede, logs só com mensagem de exceção, leitura de processos sem privilégio. `pip-audit -r requirements-build.txt` rodado pelo Mateus depois da publicação (2026-11-14): sem vulnerabilidades conhecidas. Pendente igual: assinatura de código. Setup SHA-256 `1f0df28ff175cf130c75f520075dfb18ba5867e6ae3741cf7582a3b894580669`. `versao-1.1` mesclada na `main` (fast-forward), tag `v1.1.0`.
 
-## Marco 2026-11-16 · 1.1.1 (versao-1.1.1, local, sem commit)
+## Marco 2026-11-16 · 1.1.1 (versao-1.1.1: d35ad10 + docs, push feito; main segue 1.1.0)
 - Bug: log do app instalado 2026-11-16 08:01:40 `embedding failed; falling back to docked mode for this session`; o widget ficou acima da barra até reiniciar. Correção: motivo de cada falha de embed no log (`embed_failure`, com erro Win32; na volta à barra, a mesma falha só é logada uma vez), 5 tentativas com 2 s em taskbar, depois docked com `taskbar_retry` (volta à barra a cada 60 s, uma tentativa; não conta em `quick_losses`); vale para embed 5x, `taskbar not found after 60s` e `window lost 5x`. `display_mode = docked` não volta.
-- Testes: `tests/test_embed_retry.py` (26) escritos antes e vistos falhar (11 falhas + 9 erros; +2 da revisão para o log da volta, vistos falhar); `version.py` 1.1.1 e expectativas de versão em `test_app_paths`/`test_self_check`. Suíte: 506 testes OK; `--verificar` OK. Setup `dist/SysMonitor-Setup-1.1.1.exe` SHA-256 3f6f96f1…e83b (16/11). Sem commit nem release; falta teste do Mateus.
+- Testes: `tests/test_embed_retry.py` (26) escritos antes e vistos falhar (11 falhas + 9 erros; +2 da revisão para o log da volta, vistos falhar); `version.py` 1.1.1 e expectativas de versão em `test_app_paths`/`test_self_check`. Suíte: 506 testes OK; `--verificar` OK. Setup `dist/SysMonitor-Setup-1.1.1.exe` SHA-256 3f6f96f1…e83b (16/11). Aprovada pelo Mateus; commit e push da versao-1.1.1 em 16/11. Sem merge na main, tag nem release.
