@@ -32,8 +32,8 @@ Inclui a 1.0.3 (avisos por família), o histórico (5/15 min/1 h/4 h, zoom, sele
 | discos: coluna do widget, janela Discos, E/S por processo | [interface.md](interface.md), [arquitetura.md](arquitetura.md), [sensores-coleta.md](sensores-coleta.md) e [telas.md](telas.md) |
 | tooltip do top 3 de CPU/MEM (widget e bandeja) | [interface.md](interface.md), [arquitetura.md](arquitetura.md) e [armadilhas.md](armadilhas.md) |
 
-## Versão 1.2.0 (local)
-Discos (coluna no widget, janela `SysMonitor · Discos`, top 3 por E/S) feito na `versao-1.2`, sem commit; falta teste do Mateus. `version.py` = 1.2.0.
+## Versão 1.2.0 (publicada)
+Discos (coluna no widget, janela `SysMonitor · Discos`, top 3 por E/S) publicada em 2026-11-16: `main` = `versao-1.2`, tag `v1.2.0`, release oficial (Latest). Inclui a 1.1.1. `version.py` = 1.2.0.
 
 ## Regras invioláveis
 - Não mudar branch, commitar, publicar, criar tag ou release sem autorização explícita.

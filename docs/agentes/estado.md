@@ -1,8 +1,9 @@
-Atualizado em 2026-11-16 (1.2.0 local: discos)
+Atualizado em 2026-11-16 (1.2.0 publicada: discos)
 
 # Estado e histórico
-## Versão 1.2.0 local (2026-11-16, discos)
-- Na `versao-1.2`, sem commit: coluna de disco no widget, tooltip com top 3 por E/S, janela `SysMonitor · Discos`, limites `disk`/`disk_space`. Spec e plano em `docs/superpowers/`. Falta o teste real do Mateus (widget não foi reiniciado nem o Explorer tocado). Ver [interface.md](interface.md).
+## Versão 1.2.0 publicada (2026-11-16, discos)
+- Coluna de disco no widget, tooltip com top 3 por E/S, janela `SysMonitor · Discos`, limites `disk` (50/75/90) e `disk_space` (par Warning/High 80/90; abaixo de Warning a barra fica na cor Low, pedido do Mateus após o teste). Spec e plano em `docs/superpowers/`. Ver [interface.md](interface.md). Inclui a 1.1.1.
+- Release oficial v1.2.0 (2026-11-16, aprovada pelo Mateus após teste real: "pode comitar e publicar a release nova"): seção A reconferida — gitleaks sem vazamentos (76 commits); `requirements-build.txt` igual ao da 1.1.0; `pip-audit -r requirements-build.txt` sem vulnerabilidades conhecidas; código novo sem rede, só leitura de contadores PDH, volumes e processos sem privilégio, logs só com mensagem de exceção. 566 testes OK. Pendente igual: assinatura de código. Setup SHA-256 `63d677835e526654d9f1c95dee713add79bb71ba3204b1a849d409625e5b551d`. `versao-1.2` mesclada na `main` (fast-forward), tag `v1.2.0`.
 
 ## Base documentada
 - Branch: `main`; commit funcional: `7400f3565d89ede39041d2449301a8a7b70b8ff0`.
