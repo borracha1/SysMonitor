@@ -1,4 +1,4 @@
-Atualizado em 2026-11-13 (versão 1.1.0 local; ping por IP e top 3 de processos)
+Atualizado em 2026-11-16 (1.2.0 local: discos)
 
 # Arquitetura e dados
 ## Módulos
@@ -15,6 +15,8 @@ Atualizado em 2026-11-13 (versão 1.1.0 local; ping por IP e top 3 de processos)
 | `traffic_history_ui.py` | Janelas Tk do histórico (tráfego e latência/perda, base comum), sem I/O em disco |
 | `top_processes.py` | Puro: soma por nome, top 3 de CPU/memória, formatação, corte do tooltip da bandeja; leitura em massa por NtQuerySystemInformation e thread `TopProcessesMonitor` |
 | `hover_tooltip.py` | Tooltip Tk do widget (Toplevel do root oculto) para os rótulos CPU/MEM, guiado pelo cursor do Windows |
+| `disk_monitor.py` | Puro: retrato por disco, alerta, formatação, visão da janela; Win32: contadores PDH, volumes, modelo/extents, fallback psutil, thread `DiskMonitor` |
+| `disk_ui.py` | Janela Tk `SysMonitor · Discos`; só desenha `disk_view()` |
 | `metrics_collector.py` | `Metrics` e `Collector` usados pela edição de bandeja |
 | `sensors.py` | NVML por ctypes e temperatura da CPU por HTTP/JSON do LHM |
 | `create_shortcut.py` | Atalhos do usuário no Menu Iniciar e Startup para o widget |
@@ -49,6 +51,7 @@ Atualizado em 2026-11-13 (versão 1.1.0 local; ping por IP e top 3 de processos)
 - `TrafficHistory` acumula médias de 5 s e pior marca; até 2.880 pontos sob lock. A thread própria carrega/limpa o CSV ao iniciar, acrescenta a cada 60 s, reescreve atomicamente a cada hora e finaliza/grava ao sair (join limitado a 2 s). Erro de disco fica no log uma vez e permite nova tentativa, sem atrasar Tk/coleta.
 - Arquivo `data_dir()/trafego-historico.csv`, sem IPs, sites ou programas. Geometria pura ordena pontos, preserva picos por pixel e interrompe buracos; Tk apenas desenha. Ver [spec](../superpowers/specs/2026-11-06-historico-trafego-design.md).
 - Top 3 de programas: `TopProcessesMonitor` (thread daemon, evento interno `_stop_evt`) amostra a cada 2 s só com algum dono ativo (tooltip aberto; a bandeja fica sempre ativa) e publica `snapshot()` sob lock curto; Tk/Win32 só leem. Sem gravação em disco.
+- Discos: `DiskMonitor` (thread daemon, evento `_stop_evt`) coleta a cada 1 s e publica o último retrato sob lock; Tk (coluna do widget, tooltip, `DiskWindow`) só chama `snapshot()`. Espaço dos volumes relido a cada 5 ciclos, modelo só quando muda o conjunto de instâncias. Falha de coleta: log uma vez e segue; sem gravação em disco. O top 3 por E/S usa o mesmo `TopProcessesMonitor` (lista `io`).
 - Configuração, `crash.log` e `sysmon.log` ficam junto aos scripts, não no diretório corrente.
 - `sysmon.log` registra ciclo de vida do widget e é apagado ao ultrapassar 256.000 bytes antes da próxima escrita.
 - `crash.log` recebe exceções de thread principal/background; widget também captura callbacks Tk.

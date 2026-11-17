@@ -1,4 +1,4 @@
-Atualizado em 2026-11-14 (release oficial v1.1.0 na main; Latest v1.1.0)
+Atualizado em 2026-11-16 (1.2.0 local: discos)
 
 # SysMonitor · entrada para agentes
 Monitor local de rede, CPU, GPU e memória para usuários de Windows com HVCI ativo.
@@ -29,7 +29,11 @@ Inclui a 1.0.3 (avisos por família), o histórico (5/15 min/1 h/4 h, zoom, sele
 | execução, dependências, atalhos, configuração, testes, build do exe/instalador | [build-e-uso.md](build-e-uso.md) |
 | sumiço, travamento, Explorer, ctypes ou regressão | [armadilhas.md](armadilhas.md) |
 | histórico, limitações, pendências ou versão | [estado.md](estado.md) |
+| discos: coluna do widget, janela Discos, E/S por processo | [interface.md](interface.md), [arquitetura.md](arquitetura.md), [sensores-coleta.md](sensores-coleta.md) e [telas.md](telas.md) |
 | tooltip do top 3 de CPU/MEM (widget e bandeja) | [interface.md](interface.md), [arquitetura.md](arquitetura.md) e [armadilhas.md](armadilhas.md) |
+
+## Versão 1.2.0 (local)
+Discos (coluna no widget, janela `SysMonitor · Discos`, top 3 por E/S) feito na `versao-1.2`, sem commit; falta teste do Mateus. `version.py` = 1.2.0.
 
 ## Regras invioláveis
 - Não mudar branch, commitar, publicar, criar tag ou release sem autorização explícita.

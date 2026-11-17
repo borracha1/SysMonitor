@@ -61,16 +61,16 @@ de rede, discos sem letra (aparecem só se tiverem volume com letra), escolha de
   - Cabeçalho: `Disco N · <modelo>` e, à direita, `atividade NN%` na cor do limite `disk`.
   - Linha: `leitura <taxa>   escrita <taxa>`.
   - Uma linha por volume com letra, em ordem alfabética: `C:  <rótulo>`, barra de usado/total colorida pelos
-    limites `disk_space` (abaixo de Low: cor normal), `<usado> / <total>` e `<livre> livre`.
+    limites `disk_space` (abaixo de 80%: cor Low; 80–89%: Warning; ≥ 90%: High; sem leitura: cor normal), `<usado> / <total>` e `<livre> livre`.
 - Duplo clique numa linha de volume abre `C:\` no Explorer (`os.startfile`).
 - Sem disco algum: `Nenhum disco encontrado`. Valor indisponível: `--` só naquele campo.
 - Formatos: taxas em `B/s`, `KB/s`, `MB/s`, `GB/s` com vírgula decimal (1 casa abaixo de 100); espaço em `GB` até
   999 GB e `TB` acima, com 1 casa. Base 1024, como o Explorer.
 
 ### Limites (editor existente)
-- Duas linhas novas no grupo Uso (%): `DISCO (atividade)` padrão 50/75/90 e `ESPAÇO DO VOLUME` padrão 80/90/95.
-- Chaves em `[usage_limits]`: `disk_low`, `disk_warning`, `disk_high`, `disk_space_low`, `disk_space_warning`,
-  `disk_space_high`. Mesma validação (0 ≤ Low < Warning < High ≤ 100) e as 3 cores globais. Chave ausente ou
+- Duas linhas novas no grupo Uso (%): `DISCO (atividade)` padrão 50/75/90 e `ESPAÇO DO VOLUME` padrão 80/90, só 2 campos (Warning e High; `abaixo` na coluna Low).
+- Chaves em `[usage_limits]`: `disk_low`, `disk_warning`, `disk_high`, `disk_space_warning`,
+  `disk_space_high` (`disk_space_low` é ignorada). Validação `0 ≤ Low < Warning < High ≤ 100`, e `0 ≤ Warning < High ≤ 100` para espaço e as 3 cores globais. Chave ausente ou
   inválida usa o padrão só daquela métrica, como hoje.
 
 ## Componentes

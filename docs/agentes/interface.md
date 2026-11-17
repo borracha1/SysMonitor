@@ -1,4 +1,4 @@
-Atualizado em 2026-11-14 (versão 1.1.0 local; histórico em duas janelas, ping por IP e tooltip do top 3)
+Atualizado em 2026-11-16 (1.2.0 local: discos)
 
 # Interface e ciclo de vida
 ## Widget (`sys_monitor.py`)
@@ -45,7 +45,7 @@ Atualizado em 2026-11-14 (versão 1.1.0 local; histórico em duas janelas, ping 
 - Contratos: [spec inicial](../superpowers/specs/2026-11-06-historico-trafego-design.md) e [zoom, seleção, filtro e ping](../superpowers/specs/2026-11-06-historico-zoom-filtro-ping-design.md).
 
 ## Limites de uso, temperatura e cores (widget e bandeja)
-- `Configurar limites de uso…` abre o editor compartilhado (`usage_limits_ui.py`): caixas clicáveis Low/Warning/High no topo, grupo Uso (%) com CPU/GPU/MEMÓRIA e grupo Temperatura (°C) com CPU/GPU. Quinze campos, Restaurar cores padrão, Salvar/Cancelar, Enter/Esc. Instância única por raiz Tk oculta, sem parent no Explorer. Erro identifica a linha inválida e não grava/aplica nada.
+- `Configurar limites de uso…` abre o editor compartilhado (`usage_limits_ui.py`): caixas clicáveis Low/Warning/High no topo, grupo Uso (%) com CPU/GPU/MEMÓRIA, DISCO (atividade, 3 campos) e ESPAÇO DO VOLUME (2 campos, colunas Warning e High; na coluna Low o rótulo `abaixo`; padrão 80/90, regra `0 ≤ Warning < High ≤ 100`) e grupo Temperatura (°C) com CPU/GPU. Dezessete campos (a linha de espaço tem 2), Restaurar cores padrão, Salvar/Cancelar, Enter/Esc. Instância única por raiz Tk oculta, sem parent no Explorer. Erro identifica a linha inválida e não grava/aplica nada.
 - Uso: `0 ≤ Low < Warning < High ≤ 100`, defaults 50/75/90. Temperatura: mesma ordem até 120 °C, defaults 60/75/85. Decimais com ponto e somente números finitos. Abaixo de Low e sensor ausente: cor normal; demais usam a cor do maior limite atingido.
 - Três cores globais `#rrggbb`, compartilhadas entre uso e temperatura; defaults Low `#5fb0ff`, Warning `#ff9d5f`, High `#ff6b6b`. Clique abre `colorchooser.askcolor(parent=editor.window)`; caixa reflete a escolha imediatamente. Restaurar muda somente a tela. Cancelar descarta; só Salvar persiste atomicamente antes de atualizar config compartilhada/publicar snapshot.
 - CPU/GPU têm duas partes com cores independentes nos três modos. Texto preservado: taskbar/docked `CPU 45% 60°`, floating `CPU: 45%  60°C`. MEM continua um label de uso. Docked/floating usam frame horizontal; taskbar mede a parte de uso pela fonte e coloca temperatura no restante da coluna `hw`, sem mudar `w_hw`, largura total ou posição de MEM.
@@ -96,3 +96,10 @@ Atualizado em 2026-11-14 (versão 1.1.0 local; histórico em duas janelas, ping 
 - Clique esquerdo não faz nada; clique direito → `Configurar limites de uso…` ou `Fechar`. Fechar destrói a raiz/editor Tk antes de postar WM_QUIT, inclusive dentro de wait_window; finally repete a limpeza idempotente.
 - Callback WNDPROC fica referenciado em `_wndproc_ref` durante o processo.
 - Não há tratamento de mensagem `TaskbarCreated` para registrar ícones após reiniciar Explorer.
+
+## Discos (1.2.0)
+- Coluna `disk` à direita de MEM no taskbar, com gap de 10 px; só existe se `DISK_MONITOR` não for `None` (`MonitorWindow.disk_enabled`, lido por `globals().get`). Sem disco (testes por AST, self-check) as larguras são exatamente as de antes. Docked/floating: `disk_row` (ícone + texto) depois de MEM.
+- Em repouso só o ícone: `Segoe Fluent Icons` U+EDA2, ou `🖴` em `Segoe UI Symbol` sem a fonte (`disk_icon_choice`). Com o disco mais ocupado em ou acima de Low (`disk_low`, 50 por padrão): ` D: 87%` e ícone na cor do nível, letra do primeiro volume daquele disco (empate: menor índice). A coluna reserva ícone + ` Z: 100%` sempre; `embed_width` não muda entre repouso e alerta.
+- Níveis de espaço: o nível 2 esconde o disco junto com MEM (`place_forget`), a coluna continua em `_cols` mas `st` vem logo depois de `hw`. A fonte do ícone acompanha `_apply_taskbar_font`; `_taskbar_icon_font(size)` mede as candidatas sem tocar a fonte viva.
+- Clique no ícone/texto (retângulo por `GetCursorPos`) abre `DiskWindow`; hover mostra o tooltip `Maiores em E/S (aprox.)`; menu direito tem `Discos…` depois de `Latência e perda…`.
+- `DiskWindow` (`disk_ui.py`, Toplevel da raiz oculta, `SysMonitor · Discos`): um bloco por disco físico (título com modelo, atividade colorida por `disk`, leitura/escrita) e uma linha por volume (nome, barra de espaço colorida por `disk_space`: abaixo de 80% usado, cor Low; de 80% a 89%, Warning; de 90% em diante, High; sem leitura, cor normal; usado/total, livre). Atualiza a cada 1 s sem reconstruir; reconstrói só quando muda a estrutura (`key`); duplo clique no volume abre no Explorer; Esc fecha. Limites em `[usage_limits]`: `disk_*` e `disk_space_*`, editáveis em `Configurar limites de uso…`. Captura: [telas.md](telas.md).

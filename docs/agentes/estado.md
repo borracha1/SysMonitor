@@ -1,6 +1,9 @@
-Atualizado em 2026-11-16 (1.1.1 na versao-1.1.1, push feito: falha de embed não deixa o widget flutuando)
+Atualizado em 2026-11-16 (1.2.0 local: discos)
 
 # Estado e histórico
+## Versão 1.2.0 local (2026-11-16, discos)
+- Na `versao-1.2`, sem commit: coluna de disco no widget, tooltip com top 3 por E/S, janela `SysMonitor · Discos`, limites `disk`/`disk_space`. Spec e plano em `docs/superpowers/`. Falta o teste real do Mateus (widget não foi reiniciado nem o Explorer tocado). Ver [interface.md](interface.md).
+
 ## Base documentada
 - Branch: `main`; commit funcional: `7400f3565d89ede39041d2449301a8a7b70b8ff0`.
 - Nenhuma versão formal declarada no código/documentação e nenhum mecanismo de release no repositório.

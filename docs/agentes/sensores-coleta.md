@@ -1,4 +1,4 @@
-Atualizado em 2026-11-06 (versão 1.0.3 local; bordas e notificações por família)
+Atualizado em 2026-11-16 (1.2.0 local: discos)
 
 # Sensores e coleta
 ## Contrato (`sensors.py`)
@@ -65,3 +65,9 @@ Atualizado em 2026-11-06 (versão 1.0.3 local; bordas e notificações por famí
 - `python3 sensors.py` imprime GPU (temperatura, uso) e temperatura CPU com mensagens de erro.
 - Conferir LHM → Options → Remote Web Server → Run (porta 8085).
 - Não reinstalar HWiNFO para restaurar a coleta: veja [armadilhas.md](armadilhas.md).
+
+## Discos (1.2.0)
+- Atividade e taxas: PDH com `PdhAddEnglishCounterW` (caminhos em inglês, funciona em Windows em português), `\PhysicalDisk(*)\% Idle Time`, `Disk Read Bytes/sec` e `Disk Write Bytes/sec`, formato double sem teto de 100. Instâncias `"<n> <letras>"` (`_Total` ignorada); só status 0/1 (dado válido/novo) vale, senão `None`. Atividade = 100 − idle limitada a 0–100 (idle real chega a 100,003).
+- Volumes: `GetLogicalDrives` + `GetDriveTypeW` (só fixos) + `GetDiskFreeSpaceExW` + `GetVolumeInformationW` (rótulo). Modelo: `IOCTL_STORAGE_QUERY_PROPERTY` em `\\.\PhysicalDriveN`; disco do volume: `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS` em `\\.\X:`. Ambos abertos com acesso 0, sem admin. `WinDLL` privado com argtypes/restype.
+- Alternativa sem PDH: `PsutilCounters` (deltas de `disk_io_counters(perdisk=True)`), atividade `None`; troca com log único.
+- E/S por processo: `SYSTEM_PROCESS_INFORMATION` ReadTransferCount (offset 232) e WriteTransferCount (240), no mesmo `NtQuerySystemInformation` do top 3; taxa = delta por nome ÷ tempo. É aproximação: conta E/S de arquivo, rede e dispositivos, não só disco.

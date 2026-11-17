@@ -46,6 +46,7 @@ python3 create_shortcut.py
 
 ## Limites de uso, temperatura e cores em [usage_limits]
 - Uso: `cpu_low`, `cpu_warning`, `cpu_high`, `gpu_low`, `gpu_warning`, `gpu_high`, `mem_low`, `mem_warning`, `mem_high`. Defaults 50/75/90 por métrica; regra `0 ≤ Low < Warning < High ≤ 100`.
+- Disco: atividade `disk_low/warning/high` (50/75/90). Espaço do volume `disk_space_warning` e `disk_space_high` (padrão 80/90, regra `0 ≤ Warning < High ≤ 100`; `disk_space_low` é ignorada): abaixo de Warning a barra usa a cor Low, de Warning a High a cor Warning, de High em diante a cor High.
 - Temperatura: `cpu_temp_low`, `cpu_temp_warning`, `cpu_temp_high`, `gpu_temp_low`, `gpu_temp_warning`, `gpu_temp_high`. Defaults 60/75/85 °C por linha; regra `0 ≤ Low < Warning < High ≤ 120`. MEM não tem temperatura.
 - Cores globais: `low_color=#5fb0ff`, `warning_color=#ff9d5f`, `high_color=#ff6b6b`. Formato estrito `#rrggbb`, aceita letras maiúsculas; nomes e forma curta são inválidos. Mesmas cores para todas as métricas e temperaturas. Prevalece o maior limite atingido; abaixo de Low ou leitura ausente, cor normal.
 - Números finitos, decimais com ponto. Carga inválida volta ao default somente da linha/cor correspondente, sem reescrever o arquivo. `load_limits` preserva o contrato antigo de uso; `load_preferences` inclui temperaturas e cores.
