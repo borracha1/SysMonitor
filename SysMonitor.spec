@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 hidden = collect_submodules('comtypes.gen') + ['comtypes.client', 'usage_limits_ui',
                                                 'lhm_launcher', 'screen_side', 'tkinter.messagebox',
-                                                'tkinter.colorchooser']
+                                                'tkinter.colorchooser', 'disk_monitor', 'disk_ui']
 common = dict(pathex=[SPECPATH], hiddenimports=hidden, excludes=['tests', 'backup'])
 
 a_widget = Analysis(['sys_monitor.py'], **common)

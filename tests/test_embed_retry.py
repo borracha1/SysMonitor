@@ -51,7 +51,8 @@ class Harness:
             'TrafficRecorder': Mock(return_value=recorder),
             'TrafficHistoryWindow': Mock(return_value=history_ui),
             'LatencyHistoryWindow': Mock(return_value=Mock()), 'fmt_speed': Mock(),
-            'TopProcessesMonitor': Mock(return_value=top), 'data_dir': lambda: Path('.')})
+            'TopProcessesMonitor': Mock(return_value=top),
+            'DiskMonitor': Mock(), 'DiskWindow': Mock(), 'data_dir': lambda: Path('.')})
 
     def run(self):
         self.ns['main']()

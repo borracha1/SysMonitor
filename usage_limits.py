@@ -5,18 +5,27 @@ from typing import Any
 from ping_config import save_settings
 
 LEVELS = ('low', 'warning', 'high')
+# Levels edited/stored per metric. Volume space has no Low limit: below Warning is the Low colour.
+LIMIT_LEVELS = {'disk_space': ('warning', 'high')}
+
+
+def levels_of(metric):
+    return LIMIT_LEVELS.get(metric, LEVELS)
 
 
 def validate_limits(values):
     result = {}
-    for metric in ('cpu', 'gpu', 'mem'):
+    for metric in DEFAULT_LIMITS:
         try:
+            levels = levels_of(metric)
             numbers = tuple(float(v) for v in values[metric])
-            low, warning, high = numbers
-            if not all(math.isfinite(v) for v in numbers) or not 0 <= low < warning < high <= 100:
+            if len(numbers) != len(levels) or not all(math.isfinite(v) for v in numbers) \
+                    or not 0 <= numbers[0] or not all(a < b for a, b in zip(numbers, numbers[1:])) \
+                    or not numbers[-1] <= 100:
                 raise ValueError
         except (KeyError, TypeError, ValueError):
-            raise ValueError(f'{metric.upper()}: use 0 ≤ Low < Warning < High ≤ 100.') from None
+            text = ' < '.join(level.title() for level in levels_of(metric))
+            raise ValueError(f'{metric.upper()}: use 0 ≤ {text} ≤ 100.') from None
         result[metric] = numbers
     return result
 
@@ -26,7 +35,7 @@ def load_limits(cfg):
     result = dict(DEFAULT_LIMITS)
     for metric, defaults in DEFAULT_LIMITS.items():
         candidate = tuple(section.get(f'{metric}_{level}', str(default))
-                          for level, default in zip(LEVELS, defaults))
+                          for level, default in zip(levels_of(metric), defaults))
         try:
             result[metric] = validate_limits(dict(DEFAULT_LIMITS, **{metric: candidate}))[metric]
         except ValueError:
@@ -78,7 +87,7 @@ def limit_settings(values):
     validated = validate_preferences(values)
     settings = {f'{metric}_{level}': f'{number:g}'
                 for metric in values if metric != 'colors'
-                for level, number in zip(LEVELS, validated[metric])}
+                for level, number in zip(levels_of(metric), validated[metric])}
     if 'colors' in values:
         settings.update({f'{level}_color': color for level, color in zip(LEVELS, validated['colors'])})
     return settings
@@ -88,7 +97,7 @@ def save_limits(path, values):
     save_settings(path, 'usage_limits', limit_settings(values))
 
 
-DEFAULT_LIMITS = {name: (50, 75, 90) for name in ('cpu', 'gpu', 'mem')}
+DEFAULT_LIMITS = {**{name: (50, 75, 90) for name in ('cpu', 'gpu', 'mem', 'disk')}, 'disk_space': (80, 90)}
 DEFAULT_TEMP_LIMITS = {'cpu_temp': (60, 75, 85), 'gpu_temp': (60, 75, 85)}
 LOW_COLOR = '#5fb0ff'
 WARNING_COLOR = '#ff9d5f'

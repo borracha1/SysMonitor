@@ -49,6 +49,8 @@ from net_split import PacketCounters, split_rates, net_column_width, net_family_
 from traffic_history import TrafficHistory, TrafficRecorder
 from traffic_history_ui import LatencyHistoryWindow, TrafficHistoryWindow
 from top_processes import TopProcessesMonitor
+from disk_monitor import DiskMonitor, alert_disk
+from disk_ui import DiskWindow
 from hover_tooltip import HoverTooltip
 from taskbar_space import TaskbarSpaceMonitor, choose_layout
 from taskbar_session import TaskbarSession
@@ -397,6 +399,14 @@ def _win_rect(hwnd):
 TRAFFIC_HISTORY_UI = None  # One process-wide window per history kind; set by main().
 LATENCY_HISTORY_UI = None
 TOP_PROCESSES = None  # One process-wide sampler of the top 3 programs; set by main().
+DISK_MONITOR = None  # One process-wide disk collector and its window; set by main().
+DISK_UI = None
+DISK_ICON_FALLBACK = ("Segoe UI Symbol", "\U0001F5B4")
+
+
+def disk_icon_choice(families):
+    """(font family, glyph) of the storage icon: Fluent's HardDrive if installed, else the 🖴 symbol."""
+    return ("Segoe Fluent Icons", "\uEDA2") if "Segoe Fluent Icons" in families else DISK_ICON_FALLBACK
 
 
 def _cursor_pos():
@@ -773,6 +783,7 @@ class MonitorWindow:
         self.net_split = self.cfg.getboolean("net_split", fallback=False)
         self._net_active = False
         self._net_cells = []
+        self.disk_enabled = globals().get("DISK_MONITOR") is not None
         try:
             self._build_ui()
             self._place_window()
@@ -826,6 +837,8 @@ class MonitorWindow:
 
             self.lbl_mem = tk.Label(frame, text="MEM --%", fg=fg, bg=bg, font=font, anchor="w")
             self.lbl_mem.pack(side="left", padx=(0, 8))
+            if getattr(self, "disk_enabled", False):
+                self._build_disk_row(frame, bg, fg, font).pack(side="left", padx=(0, 8))
             self.lbl_status = tk.Label(frame, text="", fg="#ff6b6b", bg=bg, font=("Segoe UI", 7))
             self.lbl_status.pack(side="left")
         else:
@@ -841,6 +854,8 @@ class MonitorWindow:
 
             widgets = (self.lbl_up, self.lbl_down) + ((self.ping_panel,) if self.ping_enabled else ()) \
                 + (self.cpu_row, self.gpu_row, self.lbl_mem)
+            if getattr(self, "disk_enabled", False):
+                widgets += (self._build_disk_row(frame, bg, fg, font),)
             for w in widgets:
                 w.pack(fill="x", **pad)
             self.lbl_status.pack(fill="x", padx=6)
@@ -861,6 +876,21 @@ class MonitorWindow:
         setattr(self, 'lbl_' + metric, usage)
         setattr(self, 'lbl_' + metric + '_temp', temp)
         return row
+
+    def _make_disk_fonts(self, size):
+        family, self._disk_glyph = disk_icon_choice(set(tkfont.families(self.root)))
+        self._disk_icon_font = tkfont.Font(root=self.root, family=family, size=size)
+
+    def _build_disk_row(self, parent, bg, fg, font):
+        """Docked/floating: the disk icon and its alert text side by side in one frame."""
+        self._make_disk_fonts(self.cfg.getint("font_size"))
+        self.disk_row = tk.Frame(parent, bg=bg)
+        self.lbl_disk_icon = tk.Label(self.disk_row, text=self._disk_glyph, fg=fg, bg=bg, font=self._disk_icon_font,
+                                      bd=0, padx=0, pady=0)
+        self.lbl_disk = tk.Label(self.disk_row, text="", fg=fg, bg=bg, font=font, anchor="w", bd=0, padx=0, pady=0)
+        self.lbl_disk_icon.pack(side="left")
+        self.lbl_disk.pack(side="left")
+        return self.disk_row
 
     def _position_hardware_parts(self):
         if self.mode != 'taskbar' or not hasattr(self, 'lbl_cpu_temp'):
@@ -898,6 +928,8 @@ class MonitorWindow:
         fg = self.cfg["fg_color"]
         self.font = tkfont.Font(root=self.root, family="Segoe UI", size=self.cfg.getint("font_size"))
         self._line_h = self.font.metrics("linespace")
+        if getattr(self, "disk_enabled", False):
+            self._make_disk_fonts(self.cfg.getint("font_size"))  # Before the columns: they measure the glyph.
         self._calculate_embedded_columns()
 
         common: dict[str, Any] = dict(bg=key, font=self.font, anchor="w", bd=0, padx=0, pady=0, highlightthickness=0)
@@ -911,9 +943,14 @@ class MonitorWindow:
         self.lbl_cpu_temp = tk.Label(self.root, text="--°", fg=fg, **common)
         self.lbl_gpu_temp = tk.Label(self.root, text="--°", fg=fg, **common)
         self.lbl_mem = tk.Label(self.root, text="MEM --%", fg=fg, **common)
+        if getattr(self, "disk_enabled", False):
+            icon_common = {k: v for k, v in common.items() if k != "font"}
+            self.lbl_disk_icon = tk.Label(self.root, text=self._disk_glyph, fg=fg, font=self._disk_icon_font,
+                                          **icon_common)
+            self.lbl_disk = tk.Label(self.root, text="", fg=fg, **common)
         self.lbl_status = tk.Label(self.root, text="", fg="#ff6b6b", **common)
 
-    def _embedded_columns(self, level, measure=None):
+    def _embedded_columns(self, level, measure=None, icon_measure=None):
         if measure is None:
             measure = self.font.measure
         pad, gap = 4, 10
@@ -924,6 +961,10 @@ class MonitorWindow:
         ) if self.ping_enabled else 0
         w_hw = max(measure("CPU 100% 100°"), measure("GPU 100% 100°"))
         w_mem = measure("MEM 100%")
+        w_disk = 0
+        if getattr(self, 'disk_enabled', False):
+            icon_measure = icon_measure or self._disk_icon_font.measure
+            w_disk = icon_measure(self._disk_glyph) + measure(" Z: 100%")
         w_st = measure("⚠") + 2
         x_hw = pad + w_net + gap + w_ping + (gap if self.ping_enabled else 0)
         cols = {
@@ -932,7 +973,11 @@ class MonitorWindow:
             "hw": (x_hw, w_hw),
             "mem": (x_hw + w_hw + gap, w_mem),
         }
-        x_st = cols["mem"][0] + w_mem + 2 if level < 2 else x_hw + w_hw + 2
+        x_after_mem = cols["mem"][0] + w_mem
+        if w_disk:
+            cols["disk"] = (x_after_mem + gap, w_disk)
+            x_after_mem = cols["disk"][0] + w_disk
+        x_st = x_after_mem + 2 if level < 2 else x_hw + w_hw + 2
         cols["st"] = (x_st, w_st)
         return cols, x_st + w_st + pad
 
@@ -949,14 +994,26 @@ class MonitorWindow:
                 root=self.root, family="Segoe UI", size=size)
         return self._taskbar_measure_fonts[size]
 
+    def _taskbar_icon_font(self, size):
+        """Measurement-only copy of the disk icon font at `size` (cached like the text one)."""
+        if not hasattr(self, '_taskbar_icon_fonts'):
+            self._taskbar_icon_fonts = {}
+        if size not in self._taskbar_icon_fonts:
+            self._taskbar_icon_fonts[size] = tkfont.Font(
+                root=self.root, family=self._disk_icon_font.cget("family"), size=size)
+        return self._taskbar_icon_fonts[size]
+
+    def _taskbar_columns_at(self, level, size):
+        icon = self._taskbar_icon_font(size).measure if getattr(self, 'disk_enabled', False) else None
+        return self._embedded_columns(level, self._taskbar_measure_font(size).measure, icon)
+
     def _taskbar_widths(self):
-        measure = self._taskbar_measure_font(self.cfg.getint("font_size")).measure
-        return tuple(self._embedded_columns(level, measure)[1] for level in range(3))
+        size = self.cfg.getint("font_size")
+        return tuple(self._taskbar_columns_at(level, size)[1] for level in range(3))
 
     def _taskbar_shrink(self):
         from taskbar_space import MIN_TASKBAR_FONT
-        return tuple((size, tuple(self._embedded_columns(level, self._taskbar_measure_font(size).measure)[1]
-                                  for level in range(3)))
+        return tuple((size, tuple(self._taskbar_columns_at(level, size)[1] for level in range(3)))
                      for size in range(self.cfg.getint("font_size") - 1, MIN_TASKBAR_FONT - 1, -1))
 
     def _apply_taskbar_font(self, size):
@@ -967,6 +1024,8 @@ class MonitorWindow:
         self._line_h = self.font.metrics("linespace")
         if hasattr(self, '_net_font'):
             self._net_font.configure(size=size)
+        if getattr(self, 'disk_enabled', False):
+            self._disk_icon_font.configure(size=size)
         self._calculate_embedded_columns()
         self._layout_embedded(self.root.winfo_height())
         if hasattr(self, '_last_metrics'):
@@ -1028,6 +1087,15 @@ class MonitorWindow:
                 w -= self._ping_marker_width
             lbl.place(x=x, y=y, width=w, height=ls)
         self._position_hardware_parts()
+        if getattr(self, 'disk_enabled', False):
+            if getattr(self, '_space_level', 0) == 2:
+                self.lbl_disk_icon.place_forget()
+                self.lbl_disk.place_forget()
+            else:
+                x, w = self._cols["disk"]
+                w_icon = self._disk_icon_font.measure(self._disk_glyph)
+                self.lbl_disk_icon.place(x=x, y=ym, width=w_icon, height=ls)
+                self.lbl_disk.place(x=x + w_icon, y=ym, width=w - w_icon, height=ls)
         if self.ping_enabled:
             self.ping_marker_label.place(x=self._cols["ping"][0], y=y0,
                                          width=self._ping_marker_width, height=ls)
@@ -1222,9 +1290,12 @@ class MonitorWindow:
         menu.add_command(label="Histórico de tráfego…", command=self._open_traffic_history)
         if self.ping_enabled and self.ping_monitor is not None:
             menu.add_command(label="Latência e perda…", command=self._open_latency_history)
+        if getattr(self, 'disk_enabled', False):
+            menu.add_command(label="Discos…", command=self._open_disks)
         menu.add_command(label="Configurar limites de uso…", command=self._edit_usage_limits)
         menu.add_separator()
         menu.add_command(label="Fechar", command=self.quit)
+        self._menu = menu
         self._lhm_menu_shown = 0
 
         def show_menu(e):
@@ -1387,7 +1458,10 @@ class MonitorWindow:
         if getattr(self, "_closing", False):
             return None
         x, y = _cursor_pos()
-        for kind, labels in (("cpu", (self.lbl_cpu, self.lbl_cpu_temp)), ("mem", (self.lbl_mem,))):
+        targets = [("cpu", (self.lbl_cpu, self.lbl_cpu_temp)), ("mem", (self.lbl_mem,))]
+        if getattr(self, 'disk_enabled', False):
+            targets.append(("disk", (self.lbl_disk_icon, self.lbl_disk)))
+        for kind, labels in targets:
             rects = [_win_rect(label.winfo_id()) for label in labels if label.winfo_ismapped()]
             rects = [rect for rect in rects if rect is not None]
             if not rects:
@@ -1431,6 +1505,14 @@ class MonitorWindow:
         elif self.ping_enabled and self._inside(
                 self._union_rect((self.ping_marker_label, *self.ping_labels)), x, y):
             self._open_latency_history(self._ping_layout_family)
+        elif getattr(self, 'disk_enabled', False) and self.lbl_disk_icon.winfo_ismapped() and self._inside(
+                self._union_rect((self.lbl_disk_icon, self.lbl_disk)), x, y):
+            self._open_disks()
+
+    def _open_disks(self):
+        ui = globals().get("DISK_UI")
+        if ui is not None:
+            ui.show()
 
     def _open_traffic_history(self, family=None):
         if TRAFFIC_HISTORY_UI is not None:
@@ -1678,6 +1760,7 @@ class MonitorWindow:
                                      (self.lbl_mem, 'mem', m['mem_percent'])):
             label.config(fg=usage_color(value, limits[metric], self._fg, limits['colors']))
 
+        self._update_disk(limits)
         self._update_net_split(m)
 
         if self.ping_enabled:
@@ -1694,6 +1777,21 @@ class MonitorWindow:
                     label.config(text="", fg=self._fg)
 
         self.lbl_status.config(text="⚠" if (m["cpu_temp_error"] or m["gpu_error"]) else "")
+
+    def _update_disk(self, prefs):
+        """Icon only at rest; with the busiest disk at or above Low: ' D: 87%' and the level colour."""
+        if not getattr(self, 'disk_enabled', False):
+            return
+        monitor = globals().get("DISK_MONITOR")
+        alert = alert_disk(monitor.snapshot() if monitor is not None else None, prefs['disk'])
+        if alert is None:
+            self.lbl_disk.config(text="", fg=self._fg)
+            self.lbl_disk_icon.config(fg=self._fg)
+        else:
+            letter, pct = alert
+            color = usage_color(pct, prefs['disk'], self._fg, prefs['colors'])
+            self.lbl_disk.config(text=f" {letter}: {pct:.0f}%", fg=color)
+            self.lbl_disk_icon.config(fg=color)
 
     def _maintain_position(self):
         if self.mode == "taskbar":
@@ -1769,6 +1867,11 @@ def main():
     global TOP_PROCESSES
     TOP_PROCESSES = TopProcessesMonitor(log=_log_event)
     TOP_PROCESSES.start()
+
+    global DISK_MONITOR, DISK_UI
+    DISK_MONITOR = DiskMonitor(log=_log_event)
+    DISK_MONITOR.start()
+    DISK_UI = DiskWindow(app_root, DISK_MONITOR, lambda: load_preferences(cfg))
 
     space_monitor = TaskbarSpaceMonitor(_log_event) if mode == 'taskbar' else None
     if space_monitor is not None:
@@ -1867,16 +1970,18 @@ def main():
             space_monitor.stop()  # Never join a potentially blocked UIA provider from Tk.
         TRAFFIC_HISTORY_UI.close()
         LATENCY_HISTORY_UI.close()
+        DISK_UI.close()
         recorder.stop()
         recorder.join(timeout=2)  # Final write; never hold the exit on a blocked disk.
         collector.stop()
         TOP_PROCESSES.stop()
+        DISK_MONITOR.stop()
         if ping:
             ping.stop()
 
 
 if __name__ == "__main__":
     if is_self_check(sys.argv[1:]):
-        sys.exit(run_self_check("widget", ("usage_limits_ui", "lhm_launcher", "tkinter.messagebox"),
+        sys.exit(run_self_check("widget", ("usage_limits_ui", "lhm_launcher", "tkinter.messagebox", "disk_ui"),
                                 uia=True))
     main()

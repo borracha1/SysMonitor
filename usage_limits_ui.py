@@ -3,7 +3,11 @@ import configparser
 import tkinter as tk
 from tkinter import ttk, colorchooser
 from usage_limits import (load_preferences, validate_preferences, save_limits, limit_settings,
-                          LEVELS, DEFAULT_COLORS, color_text_color)
+                          LEVELS, DEFAULT_COLORS, color_text_color, levels_of)
+
+
+ROW_TITLES = {'cpu': 'CPU', 'gpu': 'GPU', 'mem': 'MEMÓRIA', 'disk': 'DISCO (atividade)',
+              'disk_space': 'ESPAÇO DO VOLUME', 'cpu_temp': 'CPU', 'gpu_temp': 'GPU'}
 
 
 def open_limits_editor(master, cfg, path, on_saved=None):
@@ -66,15 +70,18 @@ class LimitsEditor:
             box.grid(row=0, column=column, padx=5)
             box.bind('<Button-1>', lambda event, level=level: self.choose_color(level))
             self.color_boxes[level] = box
-        for row, title in ((1, 'Uso (%)'), (5, 'Temperatura (°C)')):
+        for row, title in ((1, 'Uso (%)'), (7, 'Temperatura (°C)')):
             ttk.Label(frame, text=title, font=('Segoe UI', 11, 'bold')).grid(
                 row=row, column=0, columnspan=4, sticky='w', pady=(10, 4))
         self.entries = {}
-        for row, metric in ((2, 'cpu'), (3, 'gpu'), (4, 'mem'), (6, 'cpu_temp'), (7, 'gpu_temp')):
+        for row, metric in ((2, 'cpu'), (3, 'gpu'), (4, 'mem'), (5, 'disk'), (6, 'disk_space'), (8, 'cpu_temp'), (9, 'gpu_temp')):
             numbers = values[metric]
-            ttk.Label(frame, text={'cpu': 'CPU', 'gpu': 'GPU', 'mem': 'MEMÓRIA'}[metric.split('_')[0]]).grid(row=row, column=0, sticky='w', padx=(0, 15))
+            ttk.Label(frame, text=ROW_TITLES[metric]).grid(row=row, column=0, sticky='w', padx=(0, 15))
             self.entries[metric] = []
-            for column, value in enumerate(numbers, 1):
+            first = LEVELS.index(levels_of(metric)[0]) + 1
+            if first > 1:
+                ttk.Label(frame, text='abaixo', foreground='#808080').grid(row=row, column=1)
+            for column, value in enumerate(numbers, first):
                 entry = ttk.Entry(frame, width=10)
                 entry.insert(0, f'{value:g}')
                 entry.grid(row=row, column=column, padx=5, pady=5)
@@ -82,12 +89,13 @@ class LimitsEditor:
         ttk.Label(frame, text='0 ≤ Low < Warning < High (decimais com ponto).\n'
                   'Uso: 0–100%. Temperatura: 0–120 °C.\n'
                   'Abaixo de Low: cor normal. Vale a cor do maior limite atingido.\n'
+                  'Espaço do volume: abaixo de Warning fica na cor Low.\n'
                   'Clique nas caixas acima para escolher as cores globais.').grid(
-                      row=8, column=0, columnspan=4, sticky='w', pady=(12, 4))
+                      row=10, column=0, columnspan=4, sticky='w', pady=(12, 4))
         self.error = ttk.Label(frame, text='', foreground='#b00020', wraplength=440)
-        self.error.grid(row=9, column=0, columnspan=4, sticky='w')
+        self.error.grid(row=11, column=0, columnspan=4, sticky='w')
         buttons = ttk.Frame(frame)
-        buttons.grid(row=10, column=0, columnspan=4, sticky='ew', pady=(12, 0))
+        buttons.grid(row=12, column=0, columnspan=4, sticky='ew', pady=(12, 0))
         ttk.Button(buttons, text='Restaurar cores padrão', command=self.restore_colors).pack(side='left', padx=(0, 20))
         ttk.Button(buttons, text='Salvar', command=self.save).pack(side='left', padx=5)
         ttk.Button(buttons, text='Cancelar', command=self.close).pack(side='left')

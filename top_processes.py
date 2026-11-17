@@ -13,21 +13,22 @@ TOP_N = 3
 IGNORED_NAMES = frozenset({'system idle process'})
 PRIME_WAIT_S = 0.5  # Between the priming read (always 0 %) and the one that is published.
 
-ProcRow = namedtuple('ProcRow', 'pid name cpu rss')  # cpu: psutil percent (100 per logical CPU)
-Entry = namedtuple('Entry', 'name value percent')  # CPU: value == percent of the machine
-TopLists = namedtuple('TopLists', 'cpu mem')
+ProcRow = namedtuple('ProcRow', 'pid name cpu rss io', defaults=(0.0,))  # cpu: psutil percent (100 per logical CPU); io: read+write B/s
+Entry = namedtuple('Entry', 'name value percent')  # CPU: value == percent of the machine; I/O: value == B/s
+TopLists = namedtuple('TopLists', 'cpu mem io', defaults=([],))
 
 
 def top_lists(rows, cpu_count, total_ram):
     """Sum the rows by program name and return the TOP_N largest of each kind."""
     cpus = max(1, cpu_count or 1)
-    totals = {}  # lower-case name -> [display name, cpu, rss]
-    for pid, name, cpu, rss in rows:
+    totals = {}  # lower-case name -> [display name, cpu, rss, io]
+    for pid, name, cpu, rss, io in rows:
         if pid == 0 or name.lower() in IGNORED_NAMES:
             continue
-        item = totals.setdefault(name.lower(), [name, 0.0, 0])
+        item = totals.setdefault(name.lower(), [name, 0.0, 0, 0.0])
         item[1] += cpu or 0.0
         item[2] += rss or 0
+        item[3] += io or 0.0
 
     def largest(index, build):
         items = [item for item in totals.values() if item[index] > 0]
@@ -36,7 +37,8 @@ def top_lists(rows, cpu_count, total_ram):
 
     return TopLists(
         largest(1, lambda item: Entry(item[0], item[1] / cpus, item[1] / cpus)),
-        largest(2, lambda item: Entry(item[0], item[2], 100.0 * item[2] / total_ram if total_ram else 0.0)))
+        largest(2, lambda item: Entry(item[0], item[2], 100.0 * item[2] / total_ram if total_ram else 0.0)),
+        largest(3, lambda item: Entry(item[0], item[3], 0.0)))
 
 
 # -- formatting ---------------------------------------------------------------
@@ -62,15 +64,24 @@ def format_mem(entry):
     return f'{entry.name}  {fmt_memory(entry.value)} ({fmt_percent(entry.percent)})'
 
 
+TITLES = {'cpu': 'Maiores em CPU', 'mem': 'Maiores em memória', 'disk': 'Maiores em E/S (aprox.)'}
+EMPTY = {'cpu': 'sem uso relevante', 'mem': 'sem uso relevante', 'disk': 'sem E/S'}
+
+
+def format_io(entry):
+    from disk_monitor import fmt_rate
+    return f'{entry.name}  {fmt_rate(entry.value)}'
+
+
 def widget_text(kind, top):
     """Tooltip text of the widget: a title and one line per program."""
-    title = 'Maiores em CPU' if kind == 'cpu' else 'Maiores em memória'
+    title = TITLES[kind]
     if top is None:
         return title + '\ncoletando…'
-    entries = top.cpu if kind == 'cpu' else top.mem
+    entries = {'cpu': top.cpu, 'mem': top.mem, 'disk': top.io}[kind]
     if not entries:
-        return title + '\nsem uso relevante'
-    fmt = format_cpu if kind == 'cpu' else format_mem
+        return title + '\n' + EMPTY[kind]
+    fmt = {'cpu': format_cpu, 'mem': format_mem, 'disk': format_io}[kind]
     return '\n'.join([title] + [fmt(entry) for entry in entries])
 
 
@@ -121,7 +132,7 @@ def tooltip_origin(label_rect, size, screen):
 
 
 # -- sampling -----------------------------------------------------------------
-RawProc = namedtuple('RawProc', 'pid created name cpu_s rss')  # cpu_s: CPU seconds used so far
+RawProc = namedtuple('RawProc', 'pid created name cpu_s rss io_read io_write', defaults=(0, 0))  # cpu_s: CPU seconds used so far
 
 
 class ProcessSampler:
@@ -149,12 +160,16 @@ class ProcessSampler:
             if proc.pid == 0:
                 continue
             key = (proc.pid, proc.created)
-            current[key] = proc.cpu_s
+            current[key] = (proc.cpu_s, proc.io_read + proc.io_write)
             before = self._previous.get(key)
-            cpu = 0.0
-            if before is not None and elapsed and elapsed > 0 and proc.cpu_s >= before:
-                cpu = 100.0 * (proc.cpu_s - before) / elapsed
-            rows.append(ProcRow(proc.pid, proc.name, cpu, proc.rss))
+            cpu = io = 0.0
+            if before is not None and elapsed and elapsed > 0:
+                if proc.cpu_s >= before[0]:
+                    cpu = 100.0 * (proc.cpu_s - before[0]) / elapsed
+                total = proc.io_read + proc.io_write
+                if total >= before[1]:
+                    io = (total - before[1]) / elapsed
+            rows.append(ProcRow(proc.pid, proc.name, cpu, proc.rss, io))
         self._previous, self._previous_at = current, now
         return top_lists(rows, self.cpu_count, self.total_ram)
 
@@ -185,14 +200,20 @@ def psutil_reader(process_iter=None, errors=None):
                 rss = process.memory_info().rss
             except errors:
                 rss = 0
-            yield RawProc(pid, created, name, cpu_s, rss)
+            try:
+                counters = process.io_counters()
+                io_read, io_write = counters.read_bytes, counters.write_bytes
+            except (*errors, AttributeError):
+                io_read = io_write = 0
+            yield RawProc(pid, created, name, cpu_s, rss, io_read, io_write)
     return read
 
 
 # SYSTEM_PROCESS_INFORMATION offsets on 64-bit Windows (one call lists every process).
 _SPI_CREATE, _SPI_USER, _SPI_KERNEL = 32, 40, 48
 _SPI_NAME_LEN, _SPI_NAME_PTR, _SPI_PID, _SPI_WORKING_SET = 56, 64, 80, 144
-_SPI_MIN_SIZE = 152
+_SPI_READ_TRANSFER = 232  # WriteTransferCount follows at 240
+_SPI_MIN_SIZE = 248
 
 
 def parse_process_buffer(buffer, base):
@@ -209,7 +230,8 @@ def parse_process_buffer(buffer, base):
         name = ''
         if name_len and 0 <= start and start + name_len <= size:
             name = bytes(buffer[start:start + name_len]).decode('utf-16-le', 'replace')
-        yield RawProc(pid, created, name, (user + kernel) / 1e7, working_set)
+        io_read, io_write = struct.unpack_from('<QQ', buffer, offset + _SPI_READ_TRANSFER)
+        yield RawProc(pid, created, name, (user + kernel) / 1e7, working_set, io_read, io_write)
         if not next_offset:
             break
         offset += next_offset

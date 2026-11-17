@@ -232,7 +232,7 @@ class UsageLimitsTests(unittest.TestCase):
             cfg = configparser.ConfigParser()
             cfg.read(path)
             self.assertEqual(u.load_limits(cfg), u.DEFAULT_LIMITS)
-            limits = {'cpu': ('0', '20.5', '100'), 'gpu': (10, 40, 80), 'mem': (20, 60, 95)}
+            limits = dict(u.DEFAULT_LIMITS, cpu=('0', '20.5', '100'), gpu=(10, 40, 80), mem=(20, 60, 95))
             expected = u.validate_limits(limits)
             u.save_limits(path, limits)
             cfg.read(path)
@@ -256,10 +256,122 @@ class UsageLimitsTests(unittest.TestCase):
 
     def test_boundaries_defaults_and_missing_sensor(self):
         u = self.module()
-        self.assertEqual(u.DEFAULT_LIMITS, {'cpu': (50, 75, 90), 'gpu': (50, 75, 90), 'mem': (50, 75, 90)})
+        self.assertEqual(u.DEFAULT_LIMITS, {'cpu': (50, 75, 90), 'gpu': (50, 75, 90), 'mem': (50, 75, 90),
+                                              'disk': (50, 75, 90), 'disk_space': (80, 90)})
         for value, color in [(None, 'normal'), (0, 'normal'), (49.99, 'normal'),
                              (50, u.LOW_COLOR), (74.99, u.LOW_COLOR),
                              (75, u.WARNING_COLOR), (89.99, u.WARNING_COLOR),
                              (90, u.HIGH_COLOR), (100, u.HIGH_COLOR)]:
             self.assertEqual(u.usage_color(value, (50, 75, 90), 'normal'), color)
         self.assertEqual(u.usage_color(30, (10, 20, 30), 'normal'), u.HIGH_COLOR)
+
+
+class DiskSpaceEditorTests(unittest.TestCase):
+    def make(self, directory):
+        path = Path(directory) / 'config.ini'
+        path.write_text('[window]\nx=7\n', encoding='utf-8')
+        cfg = configparser.ConfigParser()
+        cfg.read(path)
+        return path, cfg
+
+    def test_editor_has_two_entries_and_saves_both(self):
+        import tkinter as tk
+        from usage_limits_ui import open_limits_editor
+        from usage_limits import load_limits
+        with tempfile.TemporaryDirectory() as directory:
+            path, cfg = self.make(directory)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                editor = open_limits_editor(root, cfg, path)
+                entries = editor.entries['disk_space']
+                self.assertEqual(len(entries), 2)
+                self.assertEqual([e.get() for e in entries], ['80', '90'])
+                self.assertEqual(len(editor.entries['disk']), 3)
+                for e, v in zip(entries, ('85', '95')):
+                    e.delete(0, 'end')
+                    e.insert(0, v)
+                editor.save()
+                self.assertEqual(load_limits(cfg)['disk_space'], (85, 95))
+                reloaded = configparser.ConfigParser()
+                reloaded.read(path)
+                self.assertEqual(reloaded['usage_limits']['disk_space_warning'], '85')
+                self.assertEqual(reloaded['usage_limits']['disk_space_high'], '95')
+                self.assertNotIn('disk_space_low', reloaded['usage_limits'])
+            finally:
+                root.destroy()
+
+    def test_editor_error_message(self):
+        import tkinter as tk
+        from usage_limits_ui import open_limits_editor
+        with tempfile.TemporaryDirectory() as directory:
+            path, cfg = self.make(directory)
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                editor = open_limits_editor(root, cfg, path)
+                e = editor.entries['disk_space']
+                e[0].delete(0, 'end')
+                e[0].insert(0, '95')
+                e[1].delete(0, 'end')
+                e[1].insert(0, '85')
+                editor.save()
+                self.assertIn('DISK_SPACE: use 0 ≤ Warning < High ≤ 100.', editor.error.cget('text'))
+            finally:
+                root.destroy()
+
+
+class DiskLimitsTests(unittest.TestCase):
+    def test_disk_defaults(self):
+        import configparser
+        from usage_limits import load_preferences
+        prefs = load_preferences(configparser.ConfigParser())
+        self.assertEqual(prefs['disk'], (50, 75, 90))
+        self.assertEqual(prefs['disk_space'], (80, 90))
+
+    def test_disk_values_load_and_invalid_falls_back_only_for_that_metric(self):
+        import configparser
+        from usage_limits import load_preferences
+        cfg = configparser.ConfigParser()
+        cfg.read_dict({'usage_limits': {'disk_low': '10', 'disk_warning': '20', 'disk_high': '30',
+                                        'disk_space_low': '10', 'disk_space_warning': '85',
+                                        'disk_space_high': '95'}})
+        prefs = load_preferences(cfg)
+        self.assertEqual(prefs['disk'], (10.0, 20.0, 30.0))
+        self.assertEqual(prefs['disk_space'], (85, 95))
+
+    def test_invalid_disk_space_falls_back_without_touching_others(self):
+        import configparser
+        from usage_limits import load_preferences
+        cfg = configparser.ConfigParser()
+        cfg.read_dict({'usage_limits': {'disk_space_warning': '95', 'disk_space_high': '85', 'cpu_low': '10',
+                                        'cpu_warning': '20', 'cpu_high': '30'}})
+        prefs = load_preferences(cfg)
+        self.assertEqual(prefs['disk_space'], (80, 90))
+        self.assertEqual(prefs['cpu'], (10, 20, 30))
+
+    def test_disk_space_low_alone_is_ignored(self):
+        import configparser
+        from usage_limits import load_preferences
+        cfg = configparser.ConfigParser()
+        cfg.read_dict({'usage_limits': {'disk_space_low': '10'}})
+        self.assertEqual(load_preferences(cfg)['disk_space'], (80, 90))
+
+    def test_validate_rejects_reversed_and_three_values(self):
+        from usage_limits import validate_limits, DEFAULT_LIMITS
+        for bad in [(90, 80), (80, 80), (80, 90, 95), (80,), (-1, 90), (80, 101)]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                validate_limits(dict(DEFAULT_LIMITS, disk_space=bad))
+
+    def test_settings_include_disk_keys(self):
+        from usage_limits import limit_settings, DEFAULT_LIMITS
+        settings = limit_settings(dict(DEFAULT_LIMITS, disk=(1, 2, 3)))
+        self.assertEqual((settings['disk_low'], settings['disk_warning'], settings['disk_high']), ('1', '2', '3'))
+        self.assertEqual(settings['disk_space_high'], '90')
+        self.assertEqual(settings['disk_space_warning'], '80')
+        self.assertNotIn('disk_space_low', settings)
+
+    def test_invalid_disk_message_names_the_row(self):
+        from usage_limits import validate_limits, DEFAULT_LIMITS
+        with self.assertRaisesRegex(ValueError, 'DISK_SPACE'):
+            validate_limits(dict(DEFAULT_LIMITS, disk_space=(90, 80)))

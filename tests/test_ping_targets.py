@@ -164,6 +164,7 @@ class LifecycleTests(unittest.TestCase):
             'TrafficHistoryWindow': Mock(return_value=history_ui),
             'LatencyHistoryWindow': Mock(return_value=Mock()), 'fmt_speed': Mock(),
             'TopProcessesMonitor': Mock(return_value=top),
+            'DiskMonitor': Mock(), 'DiskWindow': Mock(),
             'data_dir': lambda: Path('.')})
         ns['main']()
         self.assertEqual(factory.call_count, 7)

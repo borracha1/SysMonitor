@@ -206,11 +206,12 @@ class BufferParserTests(unittest.TestCase):
 
     def build(self, records):
         """Synthetic SystemProcessInformation buffer: 64-bit layout, names after the entries."""
-        size = 160
-        names = b''.join(name.encode('utf-16-le') for _, name, *_ in records)
+        size = 256
+        records = [tuple(r) + (0, 0)[len(r) - 6:] if len(r) < 8 else tuple(r) for r in records]
+        names = b''.join(r[1].encode('utf-16-le') for r in records)
         buffer = bytearray(size * len(records) + len(names))
         name_at = size * len(records)
-        for index, (pid, name, user, kernel, wset, created) in enumerate(records):
+        for index, (pid, name, user, kernel, wset, created, io_read, io_write) in enumerate(records):
             offset = index * size
             encoded = name.encode('utf-16-le')
             struct.pack_into('<I', buffer, offset, 0 if index == len(records) - 1 else size)
@@ -218,6 +219,7 @@ class BufferParserTests(unittest.TestCase):
             struct.pack_into('<HHxxxxQ', buffer, offset + 56, len(encoded), len(encoded), self.BASE + name_at)
             struct.pack_into('<Q', buffer, offset + 80, pid)
             struct.pack_into('<Q', buffer, offset + 144, wset)
+            struct.pack_into('<QQ', buffer, offset + 232, io_read, io_write)
             buffer[name_at:name_at + len(encoded)] = encoded
             name_at += len(encoded)
         return bytes(buffer)
@@ -254,6 +256,57 @@ class RealReaderTests(unittest.TestCase):
         records = list(records)
         self.assertGreater(len(records), 10)
         self.assertLess(time.perf_counter() - started, 1.5)
+
+
+class IoTests(unittest.TestCase):
+    def test_buffer_reads_the_transfer_counters(self):
+        data = BufferParserTests().build([(900, 'a.exe', 0, 0, 1, 6, 5000, 700)])
+        proc = list(tp.parse_process_buffer(data, BufferParserTests.BASE))[0]
+        self.assertEqual((proc.io_read, proc.io_write), (5000, 700))
+
+    def test_sampler_io_rate_from_the_delta_summed_by_name(self):
+        now = [100.0]
+        records = [[tp.RawProc(10, 1, 'a.exe', 0.0, 0, 1000, 0), tp.RawProc(11, 1, 'A.exe', 0.0, 0, 0, 0),
+                    tp.RawProc(12, 1, 'b.exe', 0.0, 0, 50, 50)]]
+        sampler = tp.ProcessSampler(lambda: list(records[0]), cpu_count=1, total_ram=GB, clock=lambda: now[0])
+        self.assertEqual(sampler.sample().io, [])
+        now[0] = 102.0
+        records[0] = [tp.RawProc(10, 1, 'a.exe', 0.0, 0, 5000, 2000), tp.RawProc(11, 1, 'A.exe', 0.0, 0, 1000, 0),
+                      tp.RawProc(12, 1, 'b.exe', 0.0, 0, 50, 50)]
+        io = sampler.sample().io
+        self.assertEqual([(e.name, e.value) for e in io], [('a.exe', 3500.0)])  # (4000+2000+1000)/2 s
+
+    def test_counter_going_back_is_zero(self):
+        now = [0.0]
+        records = [[tp.RawProc(10, 1, 'a.exe', 0.0, 0, 9000, 9000)]]
+        sampler = tp.ProcessSampler(lambda: list(records[0]), cpu_count=1, total_ram=GB, clock=lambda: now[0])
+        sampler.sample()
+        now[0] = 1.0
+        records[0] = [tp.RawProc(10, 1, 'a.exe', 0.0, 0, 1, 1)]
+        self.assertEqual(sampler.sample().io, [])
+
+    def test_widget_text_for_disk(self):
+        top = tp.TopLists([], [], [tp.Entry('chrome.exe', 12.4 * 1024 ** 2, 0.0)])
+        self.assertEqual(tp.widget_text('disk', top), 'Maiores em E/S (aprox.)\nchrome.exe  12,4 MB/s')
+        self.assertEqual(tp.widget_text('disk', tp.TopLists([], [])), 'Maiores em E/S (aprox.)\nsem E/S')
+        self.assertEqual(tp.widget_text('disk', None), 'Maiores em E/S (aprox.)\ncoletando…')
+
+    def test_psutil_reader_without_io_access_reports_zero(self):
+        processes = [FakeProcess(4, 'ok.exe', cpu_s=2.0, rss=2 * MB)]  # FakeProcess has no io_counters
+        self.assertEqual(list(tp.psutil_reader(lambda: iter(processes), errors=(FakeError,))()),
+                         [tp.RawProc(4, 7.0, 'ok.exe', 3.0, 2 * MB, 0, 0)])
+
+
+@unittest.skipUnless(sys.platform == 'win32', 'Windows only')
+class RealIoTests(unittest.TestCase):
+    def test_own_process_read_counter_grows_after_reading_a_file(self):
+        import os
+        read = tp.ctypes_reader()
+        before = next(p for p in read() if p.pid == os.getpid()).io_read
+        with open(__file__, 'rb') as handle:
+            handle.read()
+        after = next(p for p in read() if p.pid == os.getpid()).io_read
+        self.assertGreater(after, before)
 
 
 class Clock:

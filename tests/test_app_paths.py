@@ -59,4 +59,4 @@ class EntryPointPathsTests(unittest.TestCase):
 
     def test_version(self):
         import version
-        self.assertEqual(version.__version__, '1.1.1')
+        self.assertEqual(version.__version__, '1.2.0')
